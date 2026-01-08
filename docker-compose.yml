@@ -1,0 +1,11 @@
+version: "3.9"
+services:
+  perception:
+    build: .
+    image: autonomous-perception-system:latest
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - ./:/app
+    command: ["python", "src/app.py", "--config", "configs/system.yaml"]

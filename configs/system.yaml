@@ -1,0 +1,61 @@
+project:
+  name: "AutobahnPerceptionStack (APS++)"
+  version: "0.1.0"
+
+system:
+  mode: "perception_only"   # perception_only | adas | full_autonomy
+  input_source: "video"     # video | carla
+
+runtime:
+  save_video: true
+  save_metrics: true
+  output_dir: "results"
+  overlay:
+    enabled: true
+    show_fps: true
+    show_latency: true
+  log_level: INFO
+
+performance:
+  target_fps: 20
+  fps_smoothing: 0.9
+
+perception:
+  detector_model: "yolov8n.pt"
+  conf_thres: 0.25
+
+tracking:
+  enabled: true
+  interval: 2  # run DeepSORT every N frames
+
+lane:
+  enabled: true
+  min_confidence: 0.55
+  stability_px: 35
+  min_stable_frames: 5
+
+segmentation:
+  enabled: false
+  device: cpu
+
+ldw:
+  enabled: true
+  offset_threshold_px: 80
+  persistence_frames: 6
+
+fcw:
+  enabled: true
+  px_to_m: 0.05
+  ego_y_ratio: 0.92
+  min_rel_speed_mps: 0.3
+  pre_distance_px: 220
+  ttc_caution_s: 4.0
+  ttc_warning_s: 2.5
+  ttc_critical_s: 1.5
+
+video:
+  path: data/sample.mp4
+  resize:
+    enabled: false
+    width: 1280
+    height: 720

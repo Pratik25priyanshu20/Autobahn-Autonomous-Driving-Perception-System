@@ -1,0 +1,13 @@
+ttc:
+  warning_s: 3.0
+  critical_s: 1.5
+risk:
+  velocity_weight: 0.7
+  distance_weight: 0.3
+  escalation_threshold: 0.6
+warnings:
+  debounce_frames: 3
+  persist_frames: 5
+degraded_mode:
+  enable: true
+  drop_modules: [depth, segmentation]

@@ -1,0 +1,15 @@
+smoothing:
+  method: exponential
+  alpha: 0.6
+projection:
+  camera_matrix: [[700, 0, 640], [0, 700, 360], [0, 0, 1]]
+  distortion: [0, 0, 0, 0, 0]
+weights:
+  detector: 1.0
+  tracker: 1.0
+  lanes: 0.7
+  segmentation: 0.5
+  depth: 0.4
+uncertainty:
+  default_covariance: 0.2
+  max_velocity_mps: 30
