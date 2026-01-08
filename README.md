@@ -1,4 +1,4 @@
-# APS++ — Autonomous Perception Stack
+# APS++ — Autonomous Driving Perception Stack
 
 APS++ is a real-time autonomous perception stack aimed at highway-style scenarios. It processes forward-facing video, performs detection, tracking, lane estimation, BEV projection, and safety reasoning, and produces annotated video plus run metrics.
 
