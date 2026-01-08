@@ -1,0 +1,25 @@
+ttc:
+  warning_s: 3.0
+  critical_s: 1.5
+risk:
+  velocity_weight: 0.7
+  distance_weight: 0.3
+  escalation_threshold: 0.6
+warnings:
+  debounce_frames: 3
+  persist_frames: 5
+degraded_mode:
+  enable: true
+  drop_modules: [depth, segmentation]
+
+# Phase 3.1: Occupancy grid
+occupancy_grid:
+  enabled: false
+  resolution_m: 0.2
+  max_range_m: 40.0
+
+# Phase 3.2: Blind spot detection / RCTA
+bsd:
+  enabled: false
+  blind_spot_x_range: [1.5, 4.0]
+  ttc_warn_s: 3.0

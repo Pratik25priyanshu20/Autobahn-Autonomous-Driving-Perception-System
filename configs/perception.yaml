@@ -1,0 +1,20 @@
+detector:
+  model: yolov8n
+  confidence_threshold: 0.35
+  nms_iou_threshold: 0.5
+  input_size: [640, 384]
+tracker:
+  type: deepsort
+  max_age: 30
+  max_iou_distance: 0.7
+  n_init: 3
+lanes:
+  model: ufld
+  confidence_threshold: 0.4
+segmentation:
+  model: lraspp
+  confidence_threshold: 0.4
+depth:
+  model: midas_small
+  resize: [384, 224]
+  normalize: true

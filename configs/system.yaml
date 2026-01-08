@@ -1,0 +1,99 @@
+project:
+  name: "AutobahnPerceptionStack (APS++)"
+  version: "0.2.0"
+
+system:
+  mode: "perception_only"   # perception_only | adas | full_autonomy
+  input_source: "video"     # video | carla
+
+runtime:
+  save_video: true
+  save_metrics: true
+  output_dir: "results"
+  overlay:
+    enabled: true
+    show_fps: true
+    show_latency: true
+  log_level: INFO
+
+performance:
+  target_fps: 20
+  fps_smoothing: 0.9
+  watchdog_ms: 100
+  degraded_after_misses: 3
+  adaptive_skip: false
+  parallel:
+    enabled: false
+    max_workers: 4
+
+perception:
+  detector_model: "yolov8n.pt"
+  conf_thres: 0.25
+  runtime: "pytorch"          # pytorch | onnx | tensorrt
+  onnx_path: "yolov8n.onnx"
+  confidence_calibration:
+    enabled: false
+    temperature: 1.0
+  mono3d:
+    enabled: false
+
+tracking:
+  enabled: true
+  type: "deepsort"            # deepsort | bytetrack
+  interval: 2
+  kalman: true
+
+lane:
+  enabled: true
+  backend: "canny_hough"      # canny_hough | ufldv2
+  model_path: null
+  device: "cpu"
+  min_confidence: 0.55
+  stability_px: 35
+  min_stable_frames: 5
+
+segmentation:
+  enabled: false
+  device: cpu
+
+depth:
+  enabled: false
+  backend: "midas"            # midas | depth_anything
+  device: "cpu"
+
+ldw:
+  enabled: true
+  offset_threshold_px: 80
+  persistence_frames: 6
+
+fcw:
+  enabled: true
+  px_to_m: 0.05
+  ego_y_ratio: 0.92
+  min_rel_speed_mps: 0.3
+  pre_distance_px: 220
+  ttc_caution_s: 4.0
+  ttc_warning_s: 2.5
+  ttc_critical_s: 1.5
+
+weather:
+  enabled: false
+  dark_threshold: 60.0
+  glare_threshold: 210.0
+  fog_contrast_threshold: 30.0
+
+control:
+  enabled: false
+  type: "pure_pursuit"        # pure_pursuit | mpc
+
+carla:
+  host: "localhost"
+  port: 2000
+  town: "Town01"
+
+video:
+  path: data/sample.mp4
+  resize:
+    enabled: false
+    width: 1280
+    height: 720
