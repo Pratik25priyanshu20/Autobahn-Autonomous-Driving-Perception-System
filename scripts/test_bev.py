@@ -5,11 +5,11 @@ Quick BEV unit test (no video required).
 Creates a mock world with two objects ahead of ego and writes an image.
 """
 
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass, field  # noqa: E402
+from pathlib import Path  # noqa: E402
 
-from src.bev import BEVRenderer
-from src.fusion.tracked_object import TrackedObject
+from src.bev import BEVRenderer  # noqa: E402
+from src.fusion.tracked_object import TrackedObject  # noqa: E402
 
 
 @dataclass

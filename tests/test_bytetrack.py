@@ -2,7 +2,7 @@
 import pytest
 
 try:
-    import supervision
+    import supervision  # noqa: F401
     HAS_SV = True
 except ImportError:
     HAS_SV = False
@@ -12,8 +12,9 @@ from src.types.detection import Detection
 
 @pytest.mark.skipif(not HAS_SV, reason="supervision not installed")
 def test_bytetrack_basic():
-    from src.perception.tracking.bytetrack_tracker import ByteTrackTracker
     import numpy as np
+
+    from src.perception.tracking.bytetrack_tracker import ByteTrackTracker
 
     tracker = ByteTrackTracker()
     frame = np.zeros((480, 640, 3), dtype=np.uint8)

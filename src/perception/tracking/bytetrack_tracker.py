@@ -6,7 +6,6 @@ Uses the ``supervision`` library for the ByteTrack algorithm.
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from typing import Deque, Dict, List, Tuple
 
 import numpy as np
 
@@ -37,13 +36,13 @@ class ByteTrackTracker:
             minimum_matching_threshold=minimum_matching_threshold,
             frame_rate=frame_rate,
         )
-        self.prev_centers: Dict[int, Tuple[float, float]] = {}
-        self.trajectories: Dict[int, Deque[Tuple[int, int]]] = defaultdict(lambda: deque(maxlen=30))
-        self._class_map: Dict[int, str] = {}
+        self.prev_centers: dict[int, tuple[float, float]] = {}
+        self.trajectories: dict[int, deque[tuple[int, int]]] = defaultdict(lambda: deque(maxlen=30))
+        self._class_map: dict[int, str] = {}
 
     def update(
-        self, frame: np.ndarray, detections: List[Detection]
-    ) -> Tuple[List[Track], Dict[int, List[Tuple[int, int]]]]:
+        self, frame: np.ndarray, detections: list[Detection]
+    ) -> tuple[list[Track], dict[int, list[tuple[int, int]]]]:
         if not detections:
             return [], {}
 
@@ -58,7 +57,7 @@ class ByteTrackTracker:
         for d in detections:
             self._class_map[d.class_id] = d.class_name
 
-        out_tracks: List[Track] = []
+        out_tracks: list[Track] = []
         for i in range(len(tracked)):
             x1, y1, x2, y2 = map(int, tracked.xyxy[i])
             tid = int(tracked.tracker_id[i])

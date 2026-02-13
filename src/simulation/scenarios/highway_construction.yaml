@@ -1,0 +1,29 @@
+name: "highway_construction"
+description: "Construction zone with lane narrowing, cones, and reduced speed limit at 60 km/h"
+category: "highway"
+duration_s: 15.0
+conditions:
+  weather: "clear"
+  ego_speed_kmh: 60
+  visibility_m: 200
+  road_type: "highway"
+  lanes: 2
+  construction_zone: true
+  lane_width_m: 2.8
+actors:
+  - type: "car"
+    initial_distance_m: 30
+    speed_kmh: 55
+    behavior: "cruise"
+  - type: "cone"
+    initial_distance_m: 50
+    speed_kmh: 0
+    behavior: "static"
+    count: 20
+    spacing_m: 5
+pass_criteria:
+  no_collision: true
+  detection_rate_min: 0.88
+  tracking_accuracy_min: 0.80
+  max_lateral_deviation_m: 0.2
+  max_speed_deviation_kmh: 10

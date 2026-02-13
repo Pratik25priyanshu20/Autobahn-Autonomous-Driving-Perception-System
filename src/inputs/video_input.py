@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generator, Optional, Tuple
 
 try:
     import cv2
@@ -23,12 +23,12 @@ class VideoMeta:
 
 
 class VideoInput(BaseInput):
-    def __init__(self, path: str | Path, allow_missing: bool = False, frame_rate: Optional[int] = None):
+    def __init__(self, path: str | Path, allow_missing: bool = False, frame_rate: int | None = None):
         self.path = Path(path)
         self.logger = get_logger(__name__)
         self.frame_rate = frame_rate
         self.cap = None
-        self.meta: Optional[VideoMeta] = None
+        self.meta: VideoMeta | None = None
         self.allow_missing = allow_missing
 
         if cv2 is None:
@@ -70,7 +70,7 @@ class VideoInput(BaseInput):
         # Initialization handled in __init__
         return
 
-    def frames(self) -> Generator[Tuple[int, FramePacket], None, None]:
+    def frames(self) -> Generator[tuple[int, FramePacket], None, None]:
         if self.cap is None:
             return
         idx = 0

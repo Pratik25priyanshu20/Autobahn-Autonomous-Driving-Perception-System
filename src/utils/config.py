@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 import yaml
 
 
-def load_yaml(path: str | Path) -> Dict[str, Any]:
+def load_yaml(path: str | Path) -> dict[str, Any]:
     config_path = Path(path)
     if not config_path.exists():
         raise FileNotFoundError(f"Config not found: {config_path.resolve()}")
@@ -14,7 +14,7 @@ def load_yaml(path: str | Path) -> Dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
-def get(cfg: Dict[str, Any], key: str, default: Any = None) -> Any:
+def get(cfg: dict[str, Any], key: str, default: Any = None) -> Any:
     """
     Dot-access helper:
       get(cfg, "runtime.output_dir", "results")

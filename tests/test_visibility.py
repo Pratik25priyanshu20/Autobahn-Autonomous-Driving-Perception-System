@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 try:
-    import cv2
+    import cv2  # noqa: F401
     HAS_CV2 = True
 except ImportError:
     HAS_CV2 = False

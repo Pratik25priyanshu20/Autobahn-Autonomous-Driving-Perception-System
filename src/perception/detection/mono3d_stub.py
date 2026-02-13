@@ -4,8 +4,6 @@ Converts 2D detections + depth map into pseudo-3D boxes.
 """
 from __future__ import annotations
 
-from typing import List, Optional
-
 import numpy as np
 
 from src.types.detection import Detection
@@ -21,11 +19,11 @@ class Mono3DDetector:
         self.cx = cx
         self.cy = cy
 
-    def infer(self, detections: List[Detection], depth_map: Optional[np.ndarray]) -> List[Detection3D]:
+    def infer(self, detections: list[Detection], depth_map: np.ndarray | None) -> list[Detection3D]:
         if depth_map is None:
             return []
 
-        results: List[Detection3D] = []
+        results: list[Detection3D] = []
         for det in detections:
             cx_px = (det.x1 + det.x2) / 2.0
             cy_px = (det.y1 + det.y2) / 2.0

@@ -1,0 +1,24 @@
+name: "cut_in_truck"
+description: "Truck cuts in from the left lane at 20 m while ego travels at 80 km/h"
+category: "cut_in"
+duration_s: 10.0
+conditions:
+  weather: "clear"
+  ego_speed_kmh: 80
+  visibility_m: 250
+  road_type: "highway"
+  lanes: 3
+actors:
+  - type: "truck"
+    initial_distance_m: 20
+    speed_kmh: 70
+    behavior: "cut_in_left"
+    lane_offset: -1
+    length_m: 12.0
+    width_m: 2.5
+pass_criteria:
+  fcw_triggered: true
+  fcw_latency_ms_max: 400
+  min_ttc_s: 1.2
+  no_collision: true
+  detection_rate_min: 0.92

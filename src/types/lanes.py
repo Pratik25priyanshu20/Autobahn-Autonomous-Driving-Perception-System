@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 
@@ -11,9 +10,9 @@ import numpy as np
 class LaneGeometry:
     """Geometric lane state from any lane detector backend."""
 
-    left_lane: Optional[np.ndarray] = None
-    right_lane: Optional[np.ndarray] = None
-    ego_offset_m: Optional[float] = None
+    left_lane: np.ndarray | None = None
+    right_lane: np.ndarray | None = None
+    ego_offset_m: float | None = None
     ego_offset_px: float = 0.0
     confidence: float = 0.0
     stable: bool = False

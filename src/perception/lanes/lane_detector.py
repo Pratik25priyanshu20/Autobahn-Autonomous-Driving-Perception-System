@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import cv2
 import numpy as np
@@ -32,11 +32,11 @@ class CannyHoughLaneDetector(BaseLaneDetector):
 
     def __init__(self, cfg: LaneDetectorConfig | None = None):
         self.cfg = cfg or LaneDetectorConfig()
-        self._prev_left: Optional[Tuple[float, float]] = None
-        self._prev_right: Optional[Tuple[float, float]] = None
+        self._prev_left: tuple[float, float] | None = None
+        self._prev_right: tuple[float, float] | None = None
         self._lane_center_hist: deque = deque(maxlen=15)
 
-    def infer(self, frame_bgr: np.ndarray) -> Dict[str, Any]:
+    def infer(self, frame_bgr: np.ndarray) -> dict[str, Any]:
         h, w = frame_bgr.shape[:2]
         roi_top = int(h * self.cfg.roi_top_ratio)
         roi_bottom = int(h * self.cfg.roi_bottom_ratio)
@@ -113,8 +113,8 @@ class CannyHoughLaneDetector(BaseLaneDetector):
         if lines is None:
             return None, None
 
-        left_pts: List[Tuple[int, int]] = []
-        right_pts: List[Tuple[int, int]] = []
+        left_pts: list[tuple[int, int]] = []
+        right_pts: list[tuple[int, int]] = []
 
         for x1, y1, x2, y2 in lines.reshape(-1, 4):
             if x2 == x1:
@@ -131,7 +131,7 @@ class CannyHoughLaneDetector(BaseLaneDetector):
         right = self._fit_line(right_pts) if right_pts else None
         return left, right
 
-    def _fit_line(self, pts: List[Tuple[int, int]]):
+    def _fit_line(self, pts: list[tuple[int, int]]):
         xs = np.array([p[0] for p in pts], dtype=np.float32)
         ys = np.array([p[1] for p in pts], dtype=np.float32)
         m, b = np.polyfit(xs, ys, 1)

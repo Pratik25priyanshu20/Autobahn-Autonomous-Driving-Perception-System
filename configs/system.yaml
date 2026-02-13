@@ -97,3 +97,54 @@ video:
     enabled: false
     width: 1280
     height: 720
+
+lidar:
+  enabled: false
+  max_range_m: 80.0
+  min_range_m: 1.0
+  voxel_size: 0.1
+  ground_removal: ransac
+  cluster_eps: 0.8
+  cluster_min_samples: 10
+
+lidar_fusion:
+  enabled: false
+  iou_threshold: 0.3
+  lidar_weight: 0.7
+  camera_weight: 0.3
+
+kitti:
+  enabled: false
+  base_path: "data/kitti"
+  sequence: null
+
+# Round 2: Radar pipeline
+radar:
+  enabled: false
+  min_rcs_dbsm: -10.0
+  cluster_distance_m: 2.0
+
+radar_fusion:
+  enabled: false
+  match_threshold_px: 100.0
+  camera_matrix: null
+
+# Round 2: Data recording
+recording:
+  enabled: false
+  record_interval: 1
+  max_file_size_mb: 100
+
+# Round 2: Explainability / Saliency
+explainability:
+  enabled: false
+  target_layer: "model.model.9"
+  num_detections: 5
+
+# Round 2: Interaction model
+interaction:
+  enabled: false
+  min_gap_s: 3.0
+  safe_following_distance_s: 2.0
+  lane_width_m: 3.5
+  cut_in_lateral_threshold: 0.5

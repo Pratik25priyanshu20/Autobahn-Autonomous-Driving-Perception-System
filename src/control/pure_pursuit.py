@@ -5,12 +5,12 @@ Computes steering angle from lane ego_offset with safety gating.
 from __future__ import annotations
 
 import math
-from typing import Any, Dict
+from typing import Any
 
 from src.control.base_controller import BaseController
 
 
-def pure_pursuit(world_model: Any, lookahead_m: float, wheelbase_m: float, max_steer_deg: float = 30.0) -> Dict[str, float]:
+def pure_pursuit(world_model: Any, lookahead_m: float, wheelbase_m: float, max_steer_deg: float = 30.0) -> dict[str, float]:
     """Compute steering from lane ego offset and safety state."""
     lanes = getattr(world_model, "lanes", {})
     safety = getattr(world_model, "safety", {})
@@ -65,5 +65,5 @@ class PurePursuitController(BaseController):
         self.wheelbase_m = wheelbase_m
         self.max_steer_deg = max_steer_deg
 
-    def plan(self, world_model: Any) -> Dict[str, float]:
+    def plan(self, world_model: Any) -> dict[str, float]:
         return pure_pursuit(world_model, self.lookahead_m, self.wheelbase_m, self.max_steer_deg)

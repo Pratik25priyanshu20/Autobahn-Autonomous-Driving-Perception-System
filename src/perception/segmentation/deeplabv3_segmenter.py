@@ -1,5 +1,4 @@
 import time
-from typing import Dict
 
 import numpy as np
 
@@ -13,7 +12,6 @@ class DeepLabV3Segmenter(BaseSegmenter):
     """
 
     def __init__(self, device: str = "cpu"):
-        import torch
         import torchvision
 
         self.device = device

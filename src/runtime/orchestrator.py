@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections import deque
 import time
-from typing import Any, Dict, List, Optional
+from collections import deque
+from typing import Any
 
 try:
     import cv2
@@ -10,18 +10,16 @@ except ImportError:  # pragma: no cover
     cv2 = None
 
 from src.adas.ttc_filter import TTCFilter
-from src.fusion.world_model import RuntimeStats, WorldModel, DrivableArea
+from src.fusion.world_model import DrivableArea, RuntimeStats, WorldModel
 from src.perception.detection.yolo import YOLODetector
 from src.perception.lanes.lane_detector import CannyHoughLaneDetector
 from src.perception.segmentation.deeplabv3_segmenter import DeepLabV3Segmenter
 from src.perception.segmentation.postprocess import extract_drivable_area
 from src.perception.tracking.deepsort_tracker import DeepSORTTracker
 from src.runtime.health_monitor import HealthMonitor
-from src.safety.distance import distance_proxy_px
 from src.safety.fcw import fcw_state
 from src.safety.safety_manager import SafetyManager
 from src.safety.ttc import compute_ttc
-from src.utils.config import get
 from src.utils.timing import FPSMeter
 
 
@@ -33,7 +31,7 @@ class Orchestrator:
     All new features are gated by config flags (default: disabled).
     """
 
-    def __init__(self, cfg: Dict[str, Any], logger):
+    def __init__(self, cfg: dict[str, Any], logger):
         self.cfg = cfg
         self.logger = logger
         self.fps_meter = FPSMeter(smoothing=float(cfg.get("performance", {}).get("fps_smoothing", 0.9)))
@@ -83,8 +81,8 @@ class Orchestrator:
             self.tracker = ByteTrackTracker()
         else:
             self.tracker = DeepSORTTracker()
-        self._last_tracks: List[Any] = []
-        self._last_trajectories: Dict[int, List[Any]] = {}
+        self._last_tracks: list[Any] = []
+        self._last_trajectories: dict[int, list[Any]] = {}
 
         # --- Lane detector (Phase 1.2: config-driven backend switch) ---
         self.lane_enabled = bool(cfg.get("lane", {}).get("enabled", True))
@@ -125,7 +123,7 @@ class Orchestrator:
         self.fcw_ttc_warning = float(fcw_cfg.get("ttc_warning_s", 2.5))
         self.fcw_ttc_critical = float(fcw_cfg.get("ttc_critical_s", 1.5))
         self.lane_width_m = 3.5
-        self._track_hist: Dict[Any, deque] = {}
+        self._track_hist: dict[Any, deque] = {}
         self._track_hist_len = 10
         self.ttc_filter = TTCFilter(alpha=0.3, min_persist_frames=3)
 
@@ -226,80 +224,191 @@ class Orchestrator:
                 from src.control.pure_pursuit import PurePursuitController
                 self.controller = PurePursuitController()
 
+        # --- ISO 26262: ASIL classifier (Phase 4) ---
+        self.asil_classifier = None
+        safety_yaml = cfg.get("safety", {})
+        asil_cfg = safety_yaml.get("asil", {})
+        if asil_cfg.get("enabled", False):
+            from src.safety.asil_classifier import ASILClassifier
+            self.asil_classifier = ASILClassifier()
+
+        # --- ISO 26262: Plausibility checker (Phase 4) ---
+        self.plausibility_checker = None
+        plaus_cfg = safety_yaml.get("plausibility", {})
+        if plaus_cfg.get("enabled", False):
+            from src.safety.plausibility_checker import PlausibilityChecker
+            self.plausibility_checker = PlausibilityChecker(
+                max_velocity_kmh=float(plaus_cfg.get("max_velocity_kmh", 200.0)),
+                max_position_jump_m=float(plaus_cfg.get("max_position_jump_m", 10.0)),
+                max_bbox_overlap=float(plaus_cfg.get("max_bbox_overlap", 0.8)),
+                max_detection_count=int(plaus_cfg.get("max_detection_count", 100)),
+            )
+        self._prev_tracks_for_plausibility: list[Any] = []
+
+        # --- ISO 26262: DTC logger (Phase 4) ---
+        self.dtc_logger = None
+        dtc_cfg = safety_yaml.get("dtc", {})
+        if dtc_cfg.get("enabled", False):
+            from src.safety.dtc_logger import DTCLogger
+            self.dtc_logger = DTCLogger(
+                output_dir=dtc_cfg.get("output_dir", "results"),
+            )
+
+        # --- ISO 26262: Redundant detector (Phase 4) ---
+        self.redundant_detector = None
+        red_cfg = safety_yaml.get("redundant_detection", {})
+        if red_cfg.get("enabled", False):
+            from src.safety.redundant_detector import RedundantDetector
+            secondary = YOLODetector(
+                model_name=red_cfg.get("secondary_model", "yolov8s.pt"),
+                device=det_cfg.get("device", None),
+            )
+            self.redundant_detector = RedundantDetector(
+                primary_detector=self.detector,
+                secondary_detector=secondary,
+                iou_threshold=float(red_cfg.get("iou_threshold", 0.5)),
+                min_agreement=float(red_cfg.get("min_agreement", 0.6)),
+            )
+
         self._prev_fcw = "NORMAL"
-        self._prev_positions: Dict[Any, tuple] = {}
+        self._prev_positions: dict[Any, tuple] = {}
 
         resize_cfg = cfg.get("video", {}).get("resize", {})
         self.resize_enabled = bool(resize_cfg.get("enabled", False))
         self.resize_w = int(resize_cfg.get("width", 1280))
         self.resize_h = int(resize_cfg.get("height", 720))
 
-    def process_frame(self, frame_id: int, frame: Any) -> WorldModel:
+        # --- Sensor health monitor (Task 4) ---
+        self.sensor_health_monitor = None
+        safety_yaml = cfg.get("safety", {})
+        sh_cfg = safety_yaml.get("sensor_health", cfg.get("sensor_health", {}))
+        if sh_cfg.get("enabled", False):
+            from src.safety.sensor_health import SensorHealthMonitor
+            br = sh_cfg.get("brightness_range", [40, 220])
+            self.sensor_health_monitor = SensorHealthMonitor(
+                brightness_range=tuple(br) if isinstance(br, list) else (40.0, 220.0),
+                blur_threshold=float(sh_cfg.get("blur_threshold", 100.0)),
+                expected_lidar_points=int(sh_cfg.get("expected_lidar_points", 10000)),
+                health_threshold=float(sh_cfg.get("health_threshold", 0.5)),
+            )
+
+        # --- Saliency / explainability (Task 6) ---
+        self.saliency_explainer = None
+        explain_cfg = cfg.get("explainability", {})
+        if explain_cfg.get("enabled", False):
+            from src.perception.explainability.grad_cam import GradCAMExplainer
+            self.saliency_explainer = GradCAMExplainer(
+                model=getattr(self.detector, "model", None),
+                target_layer=explain_cfg.get("target_layer", "model.model.9"),
+                num_detections=int(explain_cfg.get("num_detections", 5)),
+            )
+
+        # --- Interaction model (Task 7) ---
+        self.interaction_model = None
+        interact_cfg = cfg.get("interaction", {})
+        if interact_cfg.get("enabled", False):
+            from src.prediction.interaction_model import InteractionModel
+            self.interaction_model = InteractionModel(
+                min_gap_s=float(interact_cfg.get("min_gap_s", 3.0)),
+                safe_following_s=float(interact_cfg.get("safe_following_distance_s", 2.0)),
+                lane_width_m=float(interact_cfg.get("lane_width_m", 3.5)),
+                cut_in_lateral_threshold=float(interact_cfg.get("cut_in_lateral_threshold", 0.5)),
+            )
+
+        # --- Radar processor (Task 1) ---
+        self.radar_processor = None
+        radar_cfg = cfg.get("radar", {})
+        if radar_cfg.get("enabled", False):
+            from src.perception.radar.radar_processor import RadarProcessor
+            self.radar_processor = RadarProcessor(
+                min_rcs_dbsm=float(radar_cfg.get("min_rcs_dbsm", -10.0)),
+                cluster_distance_m=float(radar_cfg.get("cluster_distance_m", 2.0)),
+            )
+
+        # --- Radar-camera fusion (Task 1) ---
+        self.radar_camera_fusion = None
+        rf_cfg = cfg.get("radar_fusion", {})
+        if rf_cfg.get("enabled", False):
+            import numpy as _np
+
+            from src.fusion.radar_camera_fusion import RadarCameraFusion
+            cam_mtx = rf_cfg.get("camera_matrix")
+            self.radar_camera_fusion = RadarCameraFusion(
+                match_threshold_px=float(rf_cfg.get("match_threshold_px", 100.0)),
+                camera_matrix=_np.array(cam_mtx) if cam_mtx is not None else None,
+            )
+
+        # --- LIDAR pipeline (Task 3) ---
+        self.lidar_processor = None
+        lidar_cfg = cfg.get("lidar", {})
+        if lidar_cfg.get("enabled", False):
+            from src.perception.lidar.point_cloud_processor import PointCloudProcessor
+            self.lidar_processor = PointCloudProcessor(
+                max_range=float(lidar_cfg.get("max_range_m", 80.0)),
+                min_range=float(lidar_cfg.get("min_range_m", 1.0)),
+                voxel_size=float(lidar_cfg.get("voxel_size", 0.1)),
+                ground_method=lidar_cfg.get("ground_removal", "ransac"),
+                cluster_eps=float(lidar_cfg.get("cluster_eps", 0.8)),
+                cluster_min_samples=int(lidar_cfg.get("cluster_min_samples", 10)),
+            )
+
+        # --- BEV encoder (Task 3) ---
+        self.bev_encoder = None
+        if lidar_cfg.get("enabled", False):
+            from src.perception.lidar.bev_encoder import BEVEncoder
+            self.bev_encoder = BEVEncoder()
+
+        # --- LIDAR-camera fusion (Task 3) ---
+        self.lidar_camera_fusion = None
+        fusion_lidar_cfg = cfg.get("lidar_fusion", {})
+        if fusion_lidar_cfg.get("enabled", False):
+            from src.fusion.lidar_camera_fusion import LidarCameraFusion
+            self.lidar_camera_fusion = LidarCameraFusion(
+                iou_threshold=float(fusion_lidar_cfg.get("iou_threshold", 0.3)),
+                lidar_weight=float(fusion_lidar_cfg.get("lidar_weight", 0.7)),
+                camera_weight=float(fusion_lidar_cfg.get("camera_weight", 0.3)),
+            )
+
+    # ── Main frame pipeline ─────────────────────────────────────────
+
+    def process_frame(self, frame_id: int, frame: Any, packet: Any = None) -> WorldModel:
         if cv2 is None:
             raise ImportError("opencv-python is required for orchestrator processing")
 
-        warnings: List[str] = []
+        warnings: list[str] = []
         frame_start = time.perf_counter()
 
-        # Stage: preprocessing
-        t0 = cv2.getTickCount()
-        if self.resize_enabled:
-            frame = cv2.resize(frame, (self.resize_w, self.resize_h), interpolation=cv2.INTER_LINEAR)
-        preprocess_ms = (cv2.getTickCount() - t0) * 1000.0 / cv2.getTickFrequency()
+        # Stage 1: Preprocessing
+        frame, preprocess_ms = self._preprocess(frame)
 
-        # --- Adaptive degradation (Phase 4.3) ---
+        # Stage 2: Sensor health
+        sensor_health, sensor_health_ms = self._assess_sensors(frame, packet, warnings)
+
+        # Stage 3: Adaptive degradation
         degraded = self.health_monitor.degraded()
         if degraded and self.adaptive_skip:
             self.tracking_interval = self._base_tracking_interval * 2
         else:
             self.tracking_interval = self._base_tracking_interval
 
-        # --- Parallel or sequential perception stages ---
-        if self.parallel_executor is not None and not degraded:
-            results = self._run_parallel(frame, frame_id)
-            detections = results.get("detection", [])
-            lanes = results.get("lane", {})
-            lane_ms = 0.0
-            detect_ms = 0.0
-            seg_ms = 0.0
-            depth_ms = 0.0
-            weather_ms = 0.0
-        else:
-            # Stage: detection
-            t1 = cv2.getTickCount()
-            detections = self.detector.infer(frame, conf_thres=self.cfg.get("perception", {}).get("conf_thres", 0.25))
-            detect_ms = (cv2.getTickCount() - t1) * 1000.0 / cv2.getTickFrequency()
+        # Stage 4: Detection + lane perception
+        perc = self._run_detection_stage(frame, frame_id, degraded)
+        detections = perc["detections"]
+        lanes = perc["lanes"]
+        detect_ms = perc["detect_ms"]
+        lane_ms = perc["lane_ms"]
+        seg_ms = perc["seg_ms"]
+        depth_ms = perc["depth_ms"]
+        weather_ms = perc["weather_ms"]
 
-            # Stage: confidence calibration (Phase 0.5)
-            if self.calibrator is not None:
-                detections = self.calibrator.calibrate(detections)
+        # Stage 5: Saliency
+        saliency_map, saliency_ms = self._run_saliency_stage(frame, detections)
 
-            # Stage: lane detection
-            lanes: Dict[str, Any] = {}
-            lane_ms = 0.0
-            if self.lane_detector is not None:
-                t3 = cv2.getTickCount()
-                lanes = self.lane_detector.infer(frame)
-                lane_ms = (cv2.getTickCount() - t3) * 1000.0 / cv2.getTickFrequency()
+        # Stage 6: Tracking
+        tracks, trajectories, track_ms = self._run_tracking_update(frame, frame_id, detections)
 
-            # Stage: segmentation
-            seg_ms = 0.0
-            depth_ms = 0.0
-            weather_ms = 0.0
-
-        # Stage: tracking (with temporal decimation)
-        tracks = self._last_tracks
-        trajectories = self._last_trajectories
-        track_ms = 0.0
-        if self.tracking_enabled and self.tracking_interval > 0 and frame_id % self.tracking_interval == 0:
-            t2 = cv2.getTickCount()
-            tracks, trajectories = self.tracker.update(frame, detections)
-            track_ms = (cv2.getTickCount() - t2) * 1000.0 / cv2.getTickFrequency()
-            self._last_tracks = tracks
-            self._last_trajectories = trajectories
-
+        # FPS + info warnings
         fps = self.fps_meter.tick()
-
         target = float(self.cfg.get("performance", {}).get("target_fps", 20))
         if fps < target * 0.6:
             warnings.append("FPS low (degraded mode active)" if degraded else "FPS low")
@@ -309,13 +418,214 @@ class Orchestrator:
             warnings.append(f"INFO: tracking reused | {len(tracks)} tracks")
         warnings.append(f"INFO: {len(detections)} detections")
 
-        # Lane confidence gating and stability
+        # Stage 7: Lane analysis + LDW
+        ldw_allowed, lane_departure = self._analyze_lanes(lanes, warnings)
+
+        # Stage 8: Segmentation, depth, weather
+        env = self._run_environment_stages(frame, degraded, warnings)
+        drivable = env["drivable"]
+        seg_conf = env["seg_conf"]
+        depth_map = env["depth_map"]
+        seg_ms += env["seg_ms"]
+        depth_ms += env["depth_ms"]
+        weather_ms += env["weather_ms"]
+
+        # Stage 9: Ego-frame conversion + TTC
+        alive_ids = self._compute_ego_positions(tracks, frame)
+
+        # Stage 10: Kalman + temporal prediction
+        predictions, predictions_topk = self._run_state_estimation(tracks, alive_ids)
+
+        # Stage 11: Interaction model
+        interactions, interaction_ms = self._evaluate_interactions(tracks, warnings)
+
+        # Stage 12: BSD/RCTA
+        bsd_warnings = self._evaluate_bsd(tracks, warnings)
+
+        # Stage 13: FCW
+        fcw_result = self._compute_fcw(tracks, frame, lanes, ldw_allowed, warnings)
+
+        # Stage 14: Occupancy grid
+        occupancy = None
+        if self.occupancy_builder is not None and depth_map is not None:
+            occupancy = self.occupancy_builder.build(depth_map, drivable)
+
+        # Stage 15: LIDAR pipeline
+        lidar = self._process_lidar(packet, tracks, warnings)
+
+        # Stage 16: Radar pipeline
+        radar = self._process_radar(packet, tracks, warnings)
+
+        # --- Build WorldModel ---
+        stages = {
+            "preprocess": preprocess_ms,
+            "detection": detect_ms,
+            "tracking": track_ms,
+            "lane": lane_ms,
+            "segmentation": seg_ms,
+            "depth": depth_ms,
+            "weather": weather_ms,
+            "fcw": 0.0,
+            "lidar": lidar["lidar_ms"],
+            "bev": lidar["bev_ms"],
+            "fusion": lidar["fusion_ms"],
+            "sensor_health": sensor_health_ms,
+            "saliency": saliency_ms,
+            "interaction": interaction_ms,
+            "radar": radar["radar_ms"],
+            "radar_fusion": radar["fusion_ms"],
+        }
+
+        wm = WorldModel(
+            frame_id=frame_id,
+            frame=frame,
+            detections=detections,
+            tracks=tracks,
+            trajectories=trajectories,
+            lanes=lanes,
+            drivable_area=DrivableArea(mask=drivable, confidence=seg_conf or 0.0) if drivable is not None else DrivableArea(),
+            fcw=fcw_result["fcw"],
+            fcw_pre=fcw_result["fcw_pre"],
+            safety=self._build_safety(lanes, fcw_result["fcw"], fcw_result["fcw_pre"], bsd_warnings),
+            warnings=warnings,
+            runtime=RuntimeStats(fps=fps, stages_ms=stages),
+            depth_map=depth_map,
+            predictions=predictions,
+            predictions_topk=predictions_topk,
+            occupancy=occupancy,
+            lidar_detections=lidar["detections"],
+            fused_detections=lidar["fused"],
+            point_cloud=lidar["point_cloud"],
+            bev_grid=lidar["bev_grid"],
+            radar_detections=radar["detections"],
+            radar_fused=radar["fused"],
+            sensor_health=sensor_health,
+            saliency_map=saliency_map,
+            interactions=interactions,
+        )
+
+        # Stage 17: Post-safety (plausibility + telemetry)
+        self._run_post_safety(wm, tracks, detections, frame_id, fcw_result, warnings)
+
+        # Stage 18: Controller
+        if self.controller is not None:
+            wm.control = self.controller.plan(wm)
+
+        wm.snapshot()
+
+        # --- Health monitor check ---
+        frame_ms = (time.perf_counter() - frame_start) * 1000.0
+        self.health_monitor.check_latency(frame_ms)
+
+        assert wm.frame is not None
+        assert wm.tracks is not None
+        if wm.lanes and wm.lanes.get("ego_offset_px") is not None:
+            assert abs(wm.lanes.get("ego_offset_px", 0.0)) < 1000
+        if frame_id % 30 == 0:
+            self.logger.info("[WORLD] %s", wm.summary())
+            if drivable is not None:
+                self.logger.info("[WORLD] drivable_area=yes pixels=%d", int(drivable.sum()))
+        return wm
+
+    # ── Extracted stage methods ──────────────────────────────────────
+
+    def _preprocess(self, frame: Any) -> tuple[Any, float]:
+        """Resize frame if configured. Returns (frame, elapsed_ms)."""
+        t0 = cv2.getTickCount()
+        if self.resize_enabled:
+            frame = cv2.resize(frame, (self.resize_w, self.resize_h), interpolation=cv2.INTER_LINEAR)
+        ms = (cv2.getTickCount() - t0) * 1000.0 / cv2.getTickFrequency()
+        return frame, ms
+
+    def _assess_sensors(self, frame: Any, packet: Any, warnings: list[str]) -> tuple[dict[str, float], float]:
+        """Assess sensor health (Task 4). Returns (health_dict, elapsed_ms)."""
+        if self.sensor_health_monitor is None:
+            return {}, 0.0
+        t = cv2.getTickCount()
+        health: dict[str, float] = {}
+        cam_h = self.sensor_health_monitor.assess_camera(frame)
+        health["camera"] = cam_h.score
+        pc = getattr(packet, "point_cloud", None) if packet is not None else None
+        if pc is not None:
+            health["lidar"] = self.sensor_health_monitor.assess_lidar(pc).score
+        rf = getattr(packet, "radar_frame", None) if packet is not None else None
+        if rf is not None:
+            health["radar"] = self.sensor_health_monitor.assess_radar(rf).score
+        ms = (cv2.getTickCount() - t) * 1000.0 / cv2.getTickFrequency()
+        if self.sensor_health_monitor.degraded():
+            warnings.append("WARNING: Sensor degradation detected")
+        return health, ms
+
+    def _run_detection_stage(self, frame: Any, frame_id: int, degraded: bool) -> dict[str, Any]:
+        """Run detection + lane perception (parallel or sequential). Returns result dict."""
+        if self.parallel_executor is not None and not degraded:
+            results = self._run_parallel(frame, frame_id)
+            return {
+                "detections": results.get("detection", []),
+                "lanes": results.get("lane", {}),
+                "detect_ms": 0.0,
+                "lane_ms": 0.0,
+                "seg_ms": 0.0,
+                "depth_ms": 0.0,
+                "weather_ms": 0.0,
+            }
+
+        # Sequential: detection
+        t1 = cv2.getTickCount()
+        detections = self.detector.infer(frame, conf_thres=self.cfg.get("perception", {}).get("conf_thres", 0.25))
+        detect_ms = (cv2.getTickCount() - t1) * 1000.0 / cv2.getTickFrequency()
+
+        # Confidence calibration (Phase 0.5)
+        if self.calibrator is not None:
+            detections = self.calibrator.calibrate(detections)
+
+        # Lane detection
+        lanes: dict[str, Any] = {}
+        lane_ms = 0.0
+        if self.lane_detector is not None:
+            t3 = cv2.getTickCount()
+            lanes = self.lane_detector.infer(frame)
+            lane_ms = (cv2.getTickCount() - t3) * 1000.0 / cv2.getTickFrequency()
+
+        return {
+            "detections": detections,
+            "lanes": lanes,
+            "detect_ms": detect_ms,
+            "lane_ms": lane_ms,
+            "seg_ms": 0.0,
+            "depth_ms": 0.0,
+            "weather_ms": 0.0,
+        }
+
+    def _run_saliency_stage(self, frame: Any, detections: list) -> tuple[Any, float]:
+        """Run saliency/explainability (Task 6). Returns (saliency_map, elapsed_ms)."""
+        if self.saliency_explainer is None or not detections:
+            return None, 0.0
+        t = cv2.getTickCount()
+        saliency_map = self.saliency_explainer.explain(frame, detections)
+        ms = (cv2.getTickCount() - t) * 1000.0 / cv2.getTickFrequency()
+        return saliency_map, ms
+
+    def _run_tracking_update(self, frame: Any, frame_id: int, detections: list) -> tuple[list, dict, float]:
+        """Run tracking with temporal decimation. Returns (tracks, trajectories, elapsed_ms)."""
+        if self.tracking_enabled and self.tracking_interval > 0 and frame_id % self.tracking_interval == 0:
+            t = cv2.getTickCount()
+            tracks, trajectories = self.tracker.update(frame, detections)
+            track_ms = (cv2.getTickCount() - t) * 1000.0 / cv2.getTickFrequency()
+            self._last_tracks = tracks
+            self._last_trajectories = trajectories
+            return tracks, trajectories, track_ms
+        return self._last_tracks, self._last_trajectories, 0.0
+
+    def _analyze_lanes(self, lanes: dict, warnings: list[str]) -> tuple[bool, str | None]:
+        """Apply lane confidence gating, stability analysis, and LDW. Returns (ldw_allowed, lane_departure)."""
         ego_offset = lanes.get("ego_offset_px") if lanes else None
         ldw_allowed = False
         lane_departure = None
+
         if lanes:
             conf = float(lanes.get("lane_confidence", 0.0))
-            center_x = lanes.get("lane_center_x", None)
+            center_x = lanes.get("lane_center_x")
             if center_x is not None:
                 self._lane_center_hist.append(float(center_x))
             stable = False
@@ -347,34 +657,42 @@ class Orchestrator:
         if lane_departure is not None:
             warnings.append(f"WARNING: LANE DEPARTURE {lane_departure}")
 
-        # Stage: segmentation (non-parallel path)
-        drivable = None
-        seg_conf = None
+        return ldw_allowed, lane_departure
+
+    def _run_environment_stages(self, frame: Any, degraded: bool, warnings: list[str]) -> dict[str, Any]:
+        """Run segmentation, depth, and weather stages. Returns result dict."""
+        result: dict[str, Any] = {"drivable": None, "seg_conf": None, "depth_map": None, "seg_ms": 0.0, "depth_ms": 0.0, "weather_ms": 0.0}
+
+        # Segmentation
         if self.segmenter is not None and not (degraded and self.adaptive_skip):
-            t_seg = cv2.getTickCount()
+            t = cv2.getTickCount()
             seg_out = self.segmenter.infer(frame)
-            seg_ms = (cv2.getTickCount() - t_seg) * 1000.0 / cv2.getTickFrequency()
-            drivable = extract_drivable_area(seg_out["mask"])
-            seg_conf = seg_out.get("confidence", 0.0)
+            result["seg_ms"] = (cv2.getTickCount() - t) * 1000.0 / cv2.getTickFrequency()
+            result["drivable"] = extract_drivable_area(seg_out["mask"])
+            result["seg_conf"] = seg_out.get("confidence", 0.0)
 
-        # Stage: depth estimation (Phase 1.3)
-        depth_map = None
+        # Depth estimation (Phase 1.3)
         if self.depth_estimator is not None and not (degraded and self.adaptive_skip):
-            t_depth = cv2.getTickCount()
+            t = cv2.getTickCount()
             depth_out = self.depth_estimator.infer(frame)
-            depth_ms = (cv2.getTickCount() - t_depth) * 1000.0 / cv2.getTickFrequency()
-            depth_map = depth_out.get("depth_map")
+            result["depth_ms"] = (cv2.getTickCount() - t) * 1000.0 / cv2.getTickFrequency()
+            result["depth_map"] = depth_out.get("depth_map")
 
-        # Stage: weather/visibility (Phase 3.3)
-        visibility_result = None
+        # Weather/visibility (Phase 3.3)
         if self.visibility_detector is not None:
-            t_weather = cv2.getTickCount()
+            t = cv2.getTickCount()
             visibility_result = self.visibility_detector.detect(frame)
-            weather_ms = (cv2.getTickCount() - t_weather) * 1000.0 / cv2.getTickFrequency()
+            result["weather_ms"] = (cv2.getTickCount() - t) * 1000.0 / cv2.getTickFrequency()
             if visibility_result.degraded:
                 warnings.append(f"WARNING: visibility={visibility_result.condition}")
 
-        # --- Per-track ego-frame conversion ---
+        return result
+
+    def _compute_ego_positions(self, tracks: list, frame: Any) -> set:
+        """Convert track positions to ego-frame coordinates and compute per-track TTC.
+
+        Returns the set of alive track IDs.
+        """
         now_t = time.time()
         h, w = frame.shape[:2]
         for trk in tracks:
@@ -397,10 +715,8 @@ class Orchestrator:
             prev_pos = self._prev_positions.get(tid)
             if prev_pos is not None:
                 dt_pos = max(1e-3, now_t - prev_pos[2])
-                vx = (x_m - prev_pos[0]) / dt_pos
-                vy = (y_m - prev_pos[1]) / dt_pos
-                trk.vx = vx
-                trk.vy = vy
+                trk.vx = (x_m - prev_pos[0]) / dt_pos
+                trk.vy = (y_m - prev_pos[1]) / dt_pos
             else:
                 trk.vx = None
                 trk.vy = None
@@ -416,12 +732,15 @@ class Orchestrator:
             trk.ttc = ttc_obj
             trk.risk = fcw_state(ttc_obj) if ttc_obj is not None else None
 
+        # Prune dead tracks
         alive_ids = {getattr(t, "track_id", None) for t in tracks}
         for tid in list(self._track_hist.keys()):
             if tid not in alive_ids:
                 del self._track_hist[tid]
+        return alive_ids
 
-        # --- Kalman update (Phase 2.2) ---
+    def _run_state_estimation(self, tracks: list, alive_ids: set) -> tuple[dict, dict]:
+        """Run Kalman filter update + temporal prediction. Returns (predictions, predictions_topk)."""
         if self.kalman_manager is not None:
             for trk in tracks:
                 if trk.x is not None and trk.y is not None:
@@ -432,25 +751,52 @@ class Orchestrator:
                     trk.vy = kvy
             self.kalman_manager.prune(alive_ids)
 
-        # --- Temporal prediction (Phase 2.3) ---
-        predictions: Dict[int, List[Any]] = {}
+        predictions: dict[int, list[Any]] = {}
+        predictions_topk: dict[int, list[Any]] = {}
         if self.temporal_predictor is not None and self.kalman_manager is not None:
             predictions = self.temporal_predictor.predict(self.kalman_manager, alive_ids)
+            predictions_topk = self.temporal_predictor.predict_topk(self.kalman_manager, alive_ids)
+        return predictions, predictions_topk
 
-        # --- BSD/RCTA (Phase 3.2) ---
-        bsd_warnings = None
-        if self.bsd_detector is not None:
-            bsd_warnings_list = self.bsd_detector.evaluate(tracks)
-            if bsd_warnings_list:
-                bsd_warnings = [{"side": w.side, "track_id": w.track_id, "distance_m": w.distance_m, "ttc_s": w.ttc_s} for w in bsd_warnings_list]
-                for bw in bsd_warnings_list:
-                    warnings.append(f"WARNING: BSD {bw.side.upper()} ID={bw.track_id}")
+    def _evaluate_interactions(self, tracks: list, warnings: list[str]) -> tuple[list, float]:
+        """Run interaction model (Task 7). Returns (interactions, elapsed_ms)."""
+        if self.interaction_model is None or not tracks:
+            return [], 0.0
+        t = cv2.getTickCount()
+        ego_state = {"x": 0.0, "y": 0.0, "vx": 0.0, "vy": 10.0}
+        interactions = self.interaction_model.evaluate(ego_state, tracks)
+        ms = (cv2.getTickCount() - t) * 1000.0 / cv2.getTickFrequency()
+        for ev in interactions:
+            warnings.append(f"WARNING: INTERACTION {ev.type}: {ev.description}")
+        return interactions, ms
 
-        # --- FCW ---
+    def _evaluate_bsd(self, tracks: list, warnings: list[str]) -> list[dict] | None:
+        """Run blind spot detection. Returns bsd_warnings list or None."""
+        if self.bsd_detector is None:
+            return None
+        bsd_warnings_list = self.bsd_detector.evaluate(tracks)
+        if not bsd_warnings_list:
+            return None
+        bsd_warnings = [
+            {"side": w.side, "track_id": w.track_id, "distance_m": w.distance_m, "ttc_s": w.ttc_s}
+            for w in bsd_warnings_list
+        ]
+        for bw in bsd_warnings_list:
+            warnings.append(f"WARNING: BSD {bw.side.upper()} ID={bw.track_id}")
+        return bsd_warnings
+
+    def _compute_fcw(self, tracks: list, frame: Any, lanes: dict, ldw_allowed: bool, warnings: list[str]) -> dict[str, Any]:
+        """Compute Forward Collision Warning state (full + simple proxy).
+
+        Returns dict with keys: fcw, fcw_pre, ego_lane_only,
+        simple_state, simple_ttc, simple_lead, simple_dist, simple_closing.
+        """
+        h, w = frame.shape[:2]
         fcw = {"state": "NORMAL", "ttc_s": None, "lead_track_id": None, "distance_m": None, "rel_speed_mps": None, "distance_px": None}
         ego_y = h * self.fcw_ego_y_ratio
         ldw_allowed = bool(lanes.get("ldw_allowed", False)) if lanes else False
 
+        # --- FCW Pre-warning ---
         fcw_pre = {"state": "NONE", "ttc_s": None, "lead_track_id": None, "distance_px": None}
         if self.fcw_enabled and tracks:
             best_pre = None
@@ -490,10 +836,10 @@ class Orchestrator:
                         "ttc_s": float(ttc_pre) if ttc_pre is not None else None,
                     })
 
+        # --- Full FCW with ego-lane filtering ---
         ego_lane_only = False
-        vy_px_s = 0.0
         if self.fcw_enabled and ldw_allowed and lanes and tracks:
-            lane_center_x = lanes.get("lane_center_x", None)
+            lane_center_x = lanes.get("lane_center_x")
             left = lanes.get("left_line")
             right = lanes.get("right_line")
             lane_width_px = None
@@ -518,9 +864,8 @@ class Orchestrator:
                 cx, cy, x1, y1, x2, y2 = c
                 if cy >= ego_y:
                     continue
-                if lane_center_x is not None and lane_width_px is not None and lane_width_px > 1:
-                    if abs(cx - lane_center_x) > 0.5 * lane_width_px:
-                        continue
+                if lane_center_x is not None and lane_width_px is not None and lane_width_px > 1 and abs(cx - lane_center_x) > 0.5 * lane_width_px:
+                    continue
                 hist = list(self._track_hist[tid])
                 if len(hist) < 2:
                     continue
@@ -565,7 +910,7 @@ class Orchestrator:
                 if state != "NORMAL":
                     warnings.append(f"WARNING: FCW {state} TTC={ttc:.2f}s")
 
-        # Simple FCW proxy (fallback/telemetry)
+        # --- Simple FCW proxy (fallback/telemetry) ---
         def pick_lead_object(objs):
             if not objs:
                 return None
@@ -600,83 +945,123 @@ class Orchestrator:
                     fcw_simple_state = fcw_state(fcw_simple_ttc)
                     fcw_simple_lead = getattr(lead, "track_id", None)
 
-        # --- Occupancy grid (Phase 3.1) ---
-        occupancy = None
-        if self.occupancy_builder is not None and depth_map is not None:
-            occupancy = self.occupancy_builder.build(depth_map, drivable)
-
-        # --- Build WorldModel ---
-        stages = {
-            "preprocess": preprocess_ms,
-            "detection": detect_ms,
-            "tracking": track_ms,
-            "lane": lane_ms,
-            "segmentation": seg_ms,
-            "depth": depth_ms,
-            "weather": weather_ms,
-            "fcw": 0.0,
+        return {
+            "fcw": fcw,
+            "fcw_pre": fcw_pre,
+            "ego_lane_only": ego_lane_only,
+            "simple_state": fcw_simple_state,
+            "simple_ttc": fcw_simple_ttc,
+            "simple_lead": fcw_simple_lead,
+            "simple_dist": fcw_simple_dist,
+            "simple_closing": fcw_simple_closing,
         }
 
-        wm = WorldModel(
-            frame_id=frame_id,
-            frame=frame,
-            detections=detections,
-            tracks=tracks,
-            trajectories=trajectories,
-            lanes=lanes,
-            drivable_area=DrivableArea(mask=drivable, confidence=seg_conf or 0.0) if drivable is not None else DrivableArea(),
-            fcw=fcw,
-            fcw_pre=fcw_pre,
-            safety=self._build_safety(lanes, fcw, fcw_pre, bsd_warnings),
-            warnings=warnings,
-            runtime=RuntimeStats(fps=fps, stages_ms=stages),
-            depth_map=depth_map,
-            predictions=predictions,
-            occupancy=occupancy,
-        )
+    def _process_lidar(self, packet: Any, tracks: list, warnings: list[str]) -> dict[str, Any]:
+        """Process LIDAR pipeline: point cloud, BEV encoding, camera fusion."""
+        result: dict[str, Any] = {
+            "detections": [], "fused": [], "point_cloud": None,
+            "bev_grid": None, "lidar_ms": 0.0, "bev_ms": 0.0, "fusion_ms": 0.0,
+        }
+        pc = getattr(packet, "point_cloud", None) if packet is not None else None
+        calib = getattr(packet, "calibration", None) if packet is not None else None
+
+        if self.lidar_processor is None or pc is None:
+            return result
+
+        t = cv2.getTickCount()
+        result["detections"] = self.lidar_processor.process(pc)
+        result["lidar_ms"] = (cv2.getTickCount() - t) * 1000.0 / cv2.getTickFrequency()
+        result["point_cloud"] = pc
+        warnings.append(f"INFO: LIDAR {len(result['detections'])} detections")
+
+        # BEV encoding
+        if self.bev_encoder is not None:
+            t = cv2.getTickCount()
+            result["bev_grid"] = self.bev_encoder.encode(pc)
+            result["bev_ms"] = (cv2.getTickCount() - t) * 1000.0 / cv2.getTickFrequency()
+
+        # LIDAR-camera fusion
+        if self.lidar_camera_fusion is not None and tracks:
+            t = cv2.getTickCount()
+            result["fused"] = self.lidar_camera_fusion.fuse(
+                camera_dets=tracks, lidar_dets=result["detections"], calibration=calib,
+            )
+            result["fusion_ms"] = (cv2.getTickCount() - t) * 1000.0 / cv2.getTickFrequency()
+            warnings.append(f"INFO: Fusion {len(result['fused'])} fused detections")
+
+        return result
+
+    def _process_radar(self, packet: Any, tracks: list, warnings: list[str]) -> dict[str, Any]:
+        """Process radar pipeline: detection processing and camera fusion."""
+        result: dict[str, Any] = {"detections": [], "fused": False, "radar_ms": 0.0, "fusion_ms": 0.0}
+        rf = getattr(packet, "radar_frame", None) if packet is not None else None
+
+        if self.radar_processor is None or rf is None:
+            return result
+
+        t = cv2.getTickCount()
+        result["detections"] = self.radar_processor.process(rf)
+        result["radar_ms"] = (cv2.getTickCount() - t) * 1000.0 / cv2.getTickFrequency()
+        warnings.append(f"INFO: Radar {len(result['detections'])} detections")
+
+        if self.radar_camera_fusion is not None and tracks:
+            t = cv2.getTickCount()
+            self.radar_camera_fusion.fuse(tracks, result["detections"])
+            result["fusion_ms"] = (cv2.getTickCount() - t) * 1000.0 / cv2.getTickFrequency()
+            result["fused"] = True
+
+        return result
+
+    def _run_post_safety(self, wm: WorldModel, tracks: list, detections: list, frame_id: int,
+                         fcw_result: dict[str, Any], warnings: list[str]) -> None:
+        """Run plausibility checks, DTC logging, and FCW telemetry. Mutates wm."""
+        # ISO 26262: Plausibility checks + DTC logging
+        if self.plausibility_checker is not None:
+            plausibility_violations = self.plausibility_checker.check(
+                tracks=tracks,
+                detections=detections,
+                prev_tracks=self._prev_tracks_for_plausibility or None,
+            )
+            self._prev_tracks_for_plausibility = list(tracks)
+
+            if plausibility_violations:
+                for pv in plausibility_violations:
+                    warnings.append(f"WARNING: PLAUSIBILITY {pv.check_name}: {pv.description}")
+                    if self.dtc_logger is not None:
+                        dtc_code = "DTC_PLC_002" if pv.severity == "critical" else "DTC_PLC_001"
+                        self.dtc_logger.log(dtc_code, details={"check": pv.check_name, "description": pv.description}, frame_id=frame_id)
+
+                wm.safety.setdefault("details", {})["plausibility_violations"] = [
+                    {"check": v.check_name, "severity": v.severity, "description": v.description}
+                    for v in plausibility_violations
+                ]
 
         # FCW proxy telemetry
+        fcw_simple_state = fcw_result["simple_state"]
+        ego_lane_only = fcw_result["ego_lane_only"]
         if fcw_simple_state != self._prev_fcw:
             self.logger.info(
                 "[FCW] state %s -> %s lead=%s ttc=%s ego_lane_only=%s",
-                self._prev_fcw, fcw_simple_state, fcw_simple_lead,
-                f"{fcw_simple_ttc:.2f}" if fcw_simple_ttc is not None else None,
+                self._prev_fcw, fcw_simple_state, fcw_result["simple_lead"],
+                f"{fcw_result['simple_ttc']:.2f}" if fcw_result["simple_ttc"] is not None else None,
                 ego_lane_only,
             )
             self._prev_fcw = fcw_simple_state
             wm.safety.setdefault("fcw_event", {}).update({
-                "state": fcw_simple_state, "lead_id": fcw_simple_lead,
-                "ttc_s": fcw_simple_ttc, "distance_px": fcw_simple_dist,
-                "closing_rate": fcw_simple_closing, "ego_lane_only": ego_lane_only,
+                "state": fcw_simple_state, "lead_id": fcw_result["simple_lead"],
+                "ttc_s": fcw_result["simple_ttc"], "distance_px": fcw_result["simple_dist"],
+                "closing_rate": fcw_result["simple_closing"], "ego_lane_only": ego_lane_only,
             })
 
         wm.safety.setdefault("details", {})["fcw_proxy"] = {
-            "state": fcw_simple_state, "ttc_s": fcw_simple_ttc,
-            "lead_id": fcw_simple_lead, "distance_px": fcw_simple_dist,
-            "closing_rate": fcw_simple_closing,
+            "state": fcw_simple_state, "ttc_s": fcw_result["simple_ttc"],
+            "lead_id": fcw_result["simple_lead"], "distance_px": fcw_result["simple_dist"],
+            "closing_rate": fcw_result["simple_closing"],
         }
 
-        # --- Controller (Phase 6.2) ---
-        if self.controller is not None:
-            wm.control = self.controller.plan(wm)
+    # ── Utility methods ──────────────────────────────────────────────
 
-        wm.snapshot()
-
-        # --- Health monitor check ---
-        frame_ms = (time.perf_counter() - frame_start) * 1000.0
-        self.health_monitor.check_latency(frame_ms)
-
-        assert wm.frame is not None
-        assert wm.tracks is not None
-        if wm.lanes and wm.lanes.get("ego_offset_px") is not None:
-            assert abs(wm.lanes.get("ego_offset_px", 0.0)) < 1000
-        if frame_id % 30 == 0:
-            self.logger.info("[WORLD] %s", wm.summary())
-            if drivable is not None:
-                self.logger.info("[WORLD] drivable_area=yes pixels=%d", int(drivable.sum()))
-        return wm
-
-    def _run_parallel(self, frame: Any, frame_id: int) -> Dict[str, Any]:
+    def _run_parallel(self, frame: Any, frame_id: int) -> dict[str, Any]:
         """Run independent stages in parallel (Phase 4.1)."""
         stages = {}
         stages["detection"] = lambda: self.detector.infer(frame, conf_thres=self.cfg.get("perception", {}).get("conf_thres", 0.25))

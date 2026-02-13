@@ -1,13 +1,15 @@
 # Safety Case
 
-This document captures the safety reasoning for the APS++ perception stack. It is structured around goals, hazards, mitigations, and verification.
+This document captures the safety reasoning for the APS++ perception stack, structured around goals, hazards, mitigations, and verification. The safety layer is designed with ISO 26262 alignment, including ASIL classification, plausibility checking, and diagnostic trouble code logging.
 
 ## Top-Level Goals
 
-- **G1**: Provide timely and correct perception outputs within latency budget (50-100 ms per frame).
+- **G1**: Provide timely and correct perception outputs within latency budget (≤ 50 ms per frame).
 - **G2**: Detect and handle degraded conditions (sensor drop, model failure, overload, adverse weather) gracefully.
 - **G3**: Surface actionable warnings to the vehicle controller and/or operator.
 - **G4**: Prevent safety-critical state transitions from being missed or suppressed.
+- **G5**: Validate config correctness at startup to prevent misconfigured deployments.
+- **G6**: Provide cross-module plausibility checks to catch inconsistent perception outputs.
 
 ## Safety Systems
 
@@ -28,7 +30,7 @@ TTC smoothing via `TTCFilter` (`src/adas/ttc_filter.py`) reduces flicker from no
 
 Triggers when:
 - Lane confidence ≥ 0.7 (both lines detected).
-- Lane is stable (low jitter over recent frames).
+- Lane is stable (low jitter over recent frames via EMA smoothing).
 - Ego offset exceeds the configured threshold.
 
 LDW is gated by lane stability to avoid false warnings on unclear road markings. The `ldw_allowed` flag prevents nuisance alerts.
@@ -66,6 +68,76 @@ BSD warnings are integrated into the unified safety manager and visualized on th
 
 When `degraded=True`, the orchestrator extends safety margins and logs the condition.
 
+### Sensor Health Monitoring
+
+`src/safety/sensor_health.py` provides real-time per-sensor quality scoring:
+
+| Sensor | Assessment Method | Degradation Indicators |
+|--------|-------------------|----------------------|
+| Camera | Brightness (mean pixel value), blur (Laplacian variance), occlusion (Canny edge density) | Dark frame → score 0.06; normal → score 0.95 |
+| LIDAR | Point count ratio vs expected, intensity distribution check | 50 points vs 10K expected → score 0.30 |
+| Radar | Detection consistency via exponential moving average | 0 detections after consistent 10 → consistency 0.0 |
+
+Overall health is a weighted average. When below threshold (default 0.5), the system triggers degradation warnings. Sensor health scores are visualized on the overlay HUD and recorded in the world model.
+
+### ISO 26262 Safety Components
+
+#### ASIL Classification (`src/safety/asil_classifier.py`)
+
+Classifies hazard scenarios into ASIL levels (A through D) based on:
+- Severity of potential harm
+- Probability of exposure
+- Controllability by the driver
+
+Each detected hazard is assigned an ASIL level that determines the rigor of required validation.
+
+#### Plausibility Checker (`src/safety/plausibility_checker.py`)
+
+Cross-module sanity validation that runs after the safety manager:
+- Detection count vs track count coherence (detect orphaned tracks or missing detections)
+- TTC bounds validation (TTC should be non-negative, finite, and consistent with track velocity)
+- Safety state consistency (state transitions follow valid FSM paths)
+
+#### Redundant Detector (`src/safety/redundant_detector.py`)
+
+Lightweight fallback detector used for cross-validation:
+- Runs independently of the primary detector (simpler model or heuristic)
+- Flags disagreements above a configurable threshold
+- Provides defense-in-depth against primary detector failures
+
+#### DTC Logger (`src/safety/dtc_logger.py`)
+
+ISO 14229-style diagnostic trouble code logging:
+- Logs structured DTCs to `dtc_log.jsonl` with timestamps and severity
+- Covers sensor failures, model timeouts, state machine violations, and config errors
+- Supports automated post-incident analysis
+
+### Config Validation (`src/utils/config_validator.py`)
+
+Startup validation catches misconfigurations before the pipeline runs:
+
+| Check Type | Examples |
+|------------|---------|
+| Enum validation | `perception.runtime` must be in `{pytorch, onnx, tensorrt}` |
+| Range validation | `perception.conf_thres` must be in [0.0, 1.0] |
+| Dependency validation | `radar_fusion.enabled=true` requires `radar.enabled=true` |
+| Safety config | `sensor_health.brightness_range` min must be < max |
+
+Invalid configs raise `ConfigValidationError` with clear error messages listing all violations.
+
+### Interaction Model (`src/prediction/interaction_model.py`)
+
+Rule-based behavioral prediction for safety-relevant traffic scenarios:
+
+| Heuristic | Description | Safety Relevance |
+|-----------|-------------|-----------------|
+| Gap acceptance | Checks if gap in adjacent lane exceeds minimum | Merge/lane-change safety |
+| Yield heuristic | German right-before-left rule | Intersection safety |
+| Following distance | 2-second rule validation | Rear-end collision prevention |
+| Cut-in prediction | Lateral velocity toward ego lane | Cut-in collision avoidance |
+
+Each heuristic produces an `InteractionEvent` with risk level, involved track IDs, and estimated time-to-event.
+
 ## Hazards and Mitigations
 
 | ID | Hazard | Mitigation | Implementation |
@@ -73,11 +145,15 @@ When `degraded=True`, the orchestrator extends safety margins and logs the condi
 | H1 | Missed or late detections | Watchdog deadlines in health monitor; adaptive frame skip preserves core detection | `health_monitor.py`, adaptive skip in `orchestrator.py` |
 | H2 | False positives causing unnecessary braking | Confidence calibration (temperature scaling), track consistency via Kalman filter, ByteTrack high/low score matching | `calibration.py`, `kalman_tracker.py` |
 | H3 | Poor perception in adverse weather | Weather/visibility detector triggers degraded mode; extend safety margins; log condition | `visibility_detector.py`, `orchestrator.py` |
-| H4 | TTC misestimation | TTC bounds with conservative clamping; cross-check against Kalman-filtered velocity; EMA smoothing | `ttc_filter.py`, `kalman_tracker.py` |
-| H5 | Configuration drift | Versioned configs; checksums logged at startup; required schema validation; git hash in metrics | `app.py`, `system.yaml` |
+| H4 | TTC misestimation | TTC bounds with conservative clamping; cross-check against Kalman-filtered velocity; EMA smoothing; plausibility validation | `ttc_filter.py`, `kalman_tracker.py`, `plausibility_checker.py` |
+| H5 | Configuration drift | Versioned configs; startup validation catches invalid values; checksums logged; git hash in metrics | `config_validator.py`, `app.py` |
 | H6 | Blind spot collisions | BSD/RCTA monitoring lateral tracks; configurable zones and TTC thresholds | `bsd_rcta.py`, `safety_manager.py` |
-| H7 | Sensor failure | Health monitor consecutive-miss detection; degraded mode with graceful feature shedding | `health_monitor.py` |
+| H7 | Sensor failure | Sensor health monitor with per-sensor scoring; degraded mode with graceful feature shedding | `sensor_health.py`, `health_monitor.py` |
 | H8 | Occupancy grid misses obstacles | Conservative projection (all non-drivable pixels are occupied); configurable resolution | `occupancy_grid.py` |
+| H9 | Primary detector failure | Redundant detector cross-validates; disagreements trigger DTC and fallback mode | `redundant_detector.py`, `dtc_logger.py` |
+| H10 | Cut-in collision | Interaction model detects lateral velocity toward ego lane; time-to-cut-in warning | `interaction_model.py` |
+| H11 | Inconsistent perception outputs | Plausibility checker validates detection/track/TTC coherence post-safety | `plausibility_checker.py` |
+| H12 | LIDAR/radar sensor dropout | Sensor health scoring detects point density and detection consistency drops; pipeline continues with camera-only fallback | `sensor_health.py`, `orchestrator.py` |
 
 ## Safety Monitoring
 
@@ -86,17 +162,20 @@ When `degraded=True`, the orchestrator extends safety margins and logs the condi
 - **Track consistency**: Kalman filter smooths noisy position/velocity estimates; temporal predictor flags divergent trajectories.
 - **Weather awareness**: Visibility detector runs per-frame; degraded conditions trigger extended safety margins.
 - **Heartbeats**: Health monitor tracks consecutive misses; prolonged degradation triggers feature shedding.
+- **Sensor health**: Per-sensor quality scores updated every frame; degradation triggers warnings and DTC logging.
+- **Cross-validation**: Redundant detector + plausibility checker provide defense-in-depth.
+- **Config safety**: Startup validation prevents misconfigured deployments from running.
 
 ## Degraded Mode Strategy
 
-When the health monitor detects sustained overload or the weather detector reports degraded visibility:
+When the health monitor detects sustained overload, the weather detector reports degraded visibility, or sensor health drops below threshold:
 
-1. **Shed non-essential modules** — disable depth estimation and segmentation first.
+1. **Shed non-essential modules** — disable depth estimation, segmentation, saliency, and recording first.
 2. **Double tracking interval** — process tracking every other frame while maintaining detection.
 3. **Extend safety margins** — increase TTC warning thresholds.
 4. **Maintain core safety** — FCW and LDW continue with latest available data.
-5. **Log and alert** — degraded events are logged to `safety_events.jsonl` and surfaced on the HUD.
-6. **Auto-recover** — when latency drops below threshold or visibility improves, restore full pipeline.
+5. **Log and alert** — degraded events are logged to `safety_events.jsonl` and DTCs to `dtc_log.jsonl`; surfaced on the HUD.
+6. **Auto-recover** — when latency drops below threshold, visibility improves, or sensor health recovers, restore full pipeline.
 
 ## Control Safety Gating
 
@@ -108,16 +187,26 @@ When control modules are enabled (`control.enabled: true`):
 
 ## Verification Approach
 
-### Unit Tests
+### Unit Tests (27 modules, 179 tests)
 
-| Test File | Coverage |
-|-----------|----------|
-| `test_safety.py` | TTC/risk rule evaluation |
-| `test_safety_properties.py` | Property-based: TTC non-negative, risk finite, FCW state valid, SafetyManager never crashes |
-| `test_kalman_properties.py` | Kalman covariance PSD, update returns finite values |
-| `test_occupancy.py` | Empty grid, depth population, drivable mask suppression |
-| `test_visibility.py` | Dark/bright/normal/fog frame classification |
-| `test_perception_contracts.py` | Perception output schema validation |
+| Test File | Coverage | Tests |
+|-----------|----------|-------|
+| `test_safety.py` | TTC/risk rule evaluation | Core safety logic |
+| `test_safety_properties.py` | Property-based: TTC non-negative, risk finite, FCW state valid, SafetyManager never crashes | Hypothesis-based |
+| `test_iso26262.py` | ASIL classifier, plausibility checker, DTC logger, redundant detector | 26 tests |
+| `test_kalman_properties.py` | Kalman covariance PSD, update returns finite values | Property-based |
+| `test_occupancy.py` | Empty grid, depth population, drivable mask suppression | 3 tests |
+| `test_visibility.py` | Dark/bright/normal/fog frame classification | 4 tests |
+| `test_perception_contracts.py` | Perception output schema validation | Contract tests |
+| `test_sensor_health.py` | Normal/dark/blurred camera, low point cloud, empty radar | 14 tests |
+| `test_interaction.py` | Safe/unsafe gap, yield detection, following violation, cut-in | 11 tests |
+| `test_config_validator.py` | Enum/range/dependency/safety config validation | 16 tests |
+| `test_orchestrator_unit.py` | Extracted stage methods (preprocess, detect, track, safety, etc.) | 10 tests |
+| `test_e2e_smoke.py` | End-to-end pipeline: single frame, multi-frame, lane integration, safety output | 5 tests |
+| `test_radar.py` | Ghost filter, cartesian math, clustering, projection, fusion, CSV parsing | 17 tests |
+| `test_lidar.py` | RANSAC, voxelization, clustering, BEV encoding, KITTI loading, fusion | 16 tests |
+| `test_recording.py` | Record/replay round-trip, interval skipping, compression | 7 tests |
+| `test_saliency.py` | Output shape, normalization, overlay blending, no-detections case | 8 tests |
 
 ### Property-Based Testing (Hypothesis)
 
@@ -135,6 +224,7 @@ Safety-critical properties verified with random inputs:
 
 - `test_end_to_end.py`: Verifies the full import chain loads without errors.
 - `test_fusion.py`: Verifies perception-to-world-model fusion preserves detection data.
+- `test_e2e_smoke.py`: Runs the full orchestrator pipeline on synthetic frames, validating world model output structure.
 
 ### CI Safety Gate
 
@@ -144,25 +234,48 @@ Safety-critical properties verified with random inputs:
 safety-tests:
   runs-on: ubuntu-latest
   steps:
-    - run: pytest tests/test_safety*.py -v
+    - run: pytest tests/test_safety*.py tests/test_iso26262.py -v
+```
+
+`.github/workflows/model-regression.yml` prevents model quality regressions:
+
+```yaml
+regression-check:
+  # Fails if mAP drops >5% or latency increases >20%
+  - run: python scripts/benchmark_all.py --compare baselines/benchmark_baseline.json
 ```
 
 ### Scenario Testing
 
 - Replay datasets with ground truth for latency, miss rate, and false positive measurement.
-- Fault injection: simulate dropped frames, delayed models, and noisy detections to confirm degrade behavior.
+- Fault injection: simulate dropped frames, delayed models, and noisy detections to confirm degraded behavior.
 - Weather simulation: synthetic fog/dark/glare frames to validate visibility detector and degraded mode triggering.
+- Sensor failure: `scripts/failure_scenarios.py` demonstrates camera blackout, LIDAR dropout, and radar inconsistency with measured degradation scores.
+- CARLA scenarios: `scripts/run_scenarios.py` runs controlled scenarios in CARLA simulator with metrics collection.
+
+### Controlled Failure Demonstrations
+
+Run `python scripts/failure_scenarios.py` to verify graceful degradation:
+
+| Scenario | Normal Score | Degraded Score | System Response |
+|----------|-------------|----------------|-----------------|
+| Camera blackout | 1.00 | 0.06 | Degradation warning, feature shedding |
+| LIDAR dropout (50 pts) | 1.00 | 0.30 | Warning logged, camera-only fallback |
+| Radar inconsistency | 1.00 | 0.00 | Consistency drop flagged, DTC logged |
 
 ## Evaluation Framework
 
 `src/evaluation/` provides offline safety response evaluation:
 
 - **Safety response latency** (`safety_metrics.py`): Measures time from ground-truth event to system response.
-- **MOT metrics** (`mot_metrics.py`): MOTA/MOTP/ID-switches for tracking reliability.
+- **MOT metrics** (`mot_metrics.py`): MOTA, MOTP, IDF1, HOTA, ID-switches for tracking reliability.
 - **Lane metrics** (`lane_metrics.py`): Precision/recall/F1 for lane detection accuracy.
+- **MOT formatter** (`mot_formatter.py`): Parsers for MOT17 and KITTI tracking formats.
 
 Run evaluation:
 
 ```bash
 python scripts/evaluate.py --mode safety --predictions results/ --ground-truth data/gt/
+python scripts/evaluate_mot.py --gt data/gt/ --pred results/ --format mot17
+python scripts/generate_metrics_report.py   # Generates demo/METRICS.md
 ```

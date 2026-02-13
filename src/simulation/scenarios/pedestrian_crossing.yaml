@@ -1,0 +1,24 @@
+name: "pedestrian_crossing"
+description: "Pedestrian crosses at a marked crosswalk 30 m ahead while ego travels at 50 km/h"
+category: "pedestrian"
+duration_s: 8.0
+conditions:
+  weather: "clear"
+  ego_speed_kmh: 50
+  visibility_m: 150
+  road_type: "urban"
+  lanes: 2
+actors:
+  - type: "pedestrian"
+    initial_distance_m: 30
+    speed_kmh: 5
+    behavior: "cross"
+    crossing_direction: "left_to_right"
+pass_criteria:
+  fcw_triggered: true
+  fcw_latency_ms_max: 250
+  aeb_triggered: true
+  aeb_latency_ms_max: 400
+  min_ttc_s: 2.0
+  no_collision: true
+  detection_rate_min: 0.95

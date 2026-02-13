@@ -5,7 +5,7 @@ import json
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 try:
     import cv2
@@ -15,22 +15,22 @@ except ImportError:  # pragma: no cover
 from rich.console import Console
 from tqdm import tqdm
 
+from src.bev import BEVRenderer
 from src.inputs.video_input import VideoInput
 from src.runtime.orchestrator import Orchestrator
 from src.utils.config import get, load_yaml
 from src.utils.logger import setup_logger
 from src.visualization.overlay import (
     draw_detections,
+    draw_drivable,
     draw_fcw,
     draw_fcw_pre,
     draw_hud,
     draw_lanes,
-    draw_drivable,
     draw_safety_banner,
-    draw_world_text,
     draw_tracks,
+    draw_world_text,
 )
-from src.bev import BEVRenderer
 
 
 def get_git_hash() -> str:
@@ -60,11 +60,14 @@ def main():
     parser.add_argument("--input", default=None, help="Path to input video")
     parser.add_argument("--live", type=int, nargs="?", const=0, default=None, help="Live webcam mode (optional device id)")
     parser.add_argument("--carla", action="store_true", help="Connect to CARLA simulator")
+    parser.add_argument("--kitti", default=None, help="Path to KITTI dataset directory")
     parser.add_argument("--stream", action="store_true", help="Enable real-time WebSocket streaming")
     parser.add_argument("--stream-port", type=int, default=8765, help="Streaming server port")
+    parser.add_argument("--record", action="store_true", help="Enable data recording (.apsrec)")
+    parser.add_argument("--replay", default=None, help="Path to .apsrec file for replay")
     args = parser.parse_args()
 
-    cfg: Dict[str, Any] = load_yaml(args.config)
+    cfg: dict[str, Any] = load_yaml(args.config)
 
     output_base = get(cfg, "runtime.output_dir", "results")
     run_dir = make_run_dir(output_base)
@@ -78,7 +81,30 @@ def main():
     logger.info("Git commit: %s", git_hash)
 
     # --- Input source selection ---
-    if args.live is not None:
+    if args.replay is not None:
+        from src.recording.replay_input import ReplayInput
+        vin = ReplayInput(args.replay, playback_speed=100.0)
+        vin.start()
+        logger.info("Replay input: %s (%d frames)", args.replay, vin.frame_count)
+        class _ReplayMeta:
+            fps = 20.0
+            width = 1280
+            height = 720
+            frame_count = vin.frame_count
+        vin.meta = _ReplayMeta()
+    elif args.kitti is not None:
+        from src.inputs.kitti_input import KITTIInput
+        kitti_cfg = cfg.get("kitti", {})
+        vin = KITTIInput(
+            base_path=args.kitti,
+            sequence=kitti_cfg.get("sequence"),
+        )
+        vin.start()
+        logger.info("KITTI input: %s", args.kitti)
+        # Enable LIDAR and fusion when using KITTI
+        cfg.setdefault("lidar", {})["enabled"] = True
+        cfg.setdefault("lidar_fusion", {})["enabled"] = True
+    elif args.live is not None:
         from src.inputs.webcam_input import WebcamInput
         vin = WebcamInput(device_id=args.live)
         vin.start()
@@ -137,7 +163,7 @@ def main():
     orchestrator = Orchestrator(cfg, logger)
     bev_renderer = BEVRenderer()
 
-    metrics: Dict[str, Any] = {
+    metrics: dict[str, Any] = {
         "project": cfg.get("project", {}),
         "git_hash": git_hash,
         "input": {"path": str(getattr(args, "input", "") or "live"), "meta": meta.__dict__ if meta and hasattr(meta, "__dict__") else {}},
@@ -149,6 +175,18 @@ def main():
         bev_path = run_dir / "bev.mp4"
         bev_fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         bev_writer = cv2.VideoWriter(str(bev_path), bev_fourcc, meta.fps if meta else 30, (bev_renderer.size, bev_renderer.size))
+
+    # --- Data recorder (Task 2) ---
+    recorder = None
+    rec_cfg = cfg.get("recording", {})
+    if args.record or rec_cfg.get("enabled", False):
+        from src.recording.data_recorder import DataRecorder
+        recorder = DataRecorder(
+            output_dir=run_dir,
+            record_interval=int(rec_cfg.get("record_interval", 1)),
+            max_size_mb=float(rec_cfg.get("max_file_size_mb", 100)),
+        )
+        logger.info("Recording enabled: output=%s", run_dir)
 
     # --- Streaming server (Phase 6.3) ---
     stream_server = None
@@ -164,7 +202,12 @@ def main():
     total = meta.frame_count if meta and meta.frame_count > 0 else None
     bev_count = 0
     for frame_id, packet in tqdm(vin.frames(), total=total, desc="Processing"):
-        wm = orchestrator.process_frame(frame_id, packet.frame)
+        wm = orchestrator.process_frame(frame_id, packet.frame, packet=packet)
+
+        # Record frame (Task 2)
+        if recorder is not None:
+            recorder.record(wm)
+
         render = wm.frame
 
         if overlay_enabled:
@@ -239,6 +282,8 @@ def main():
                 details=ev,
             )
 
+    if recorder is not None:
+        recorder.close()
     vin.stop()
     if writer is not None:
         writer.release()

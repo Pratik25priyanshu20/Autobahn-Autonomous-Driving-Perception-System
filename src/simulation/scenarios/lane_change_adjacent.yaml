@@ -1,0 +1,23 @@
+name: "lane_change_adjacent"
+description: "Adjacent vehicle in blind spot while ego attempts lane change at 100 km/h"
+category: "merge"
+duration_s: 8.0
+conditions:
+  weather: "clear"
+  ego_speed_kmh: 100
+  visibility_m: 250
+  road_type: "highway"
+  lanes: 3
+  blind_spot: true
+actors:
+  - type: "car"
+    initial_distance_m: 5
+    speed_kmh: 102
+    behavior: "cruise"
+    lateral_offset_m: -3.5
+    in_blind_spot: true
+pass_criteria:
+  no_collision: true
+  detection_rate_min: 0.85
+  tracking_accuracy_min: 0.80
+  min_ttc_s: 1.5

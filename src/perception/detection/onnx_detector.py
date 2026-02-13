@@ -4,8 +4,6 @@ Uses onnxruntime with CPU, CUDA, or TensorRT execution providers.
 """
 from __future__ import annotations
 
-from typing import List, Optional
-
 import numpy as np
 
 try:
@@ -19,7 +17,6 @@ except ImportError:  # pragma: no cover
     cv2 = None
 
 from src.types.detection import Detection
-
 
 _COCO_AUTOMOTIVE = {
     0: "person",
@@ -55,7 +52,7 @@ class ONNXDetector:
             return ["CUDAExecutionProvider", "CPUExecutionProvider"]
         return ["CPUExecutionProvider"]
 
-    def infer(self, frame: np.ndarray, conf_thres: Optional[float] = None) -> List[Detection]:
+    def infer(self, frame: np.ndarray, conf_thres: float | None = None) -> list[Detection]:
         if cv2 is None:
             return []
 
@@ -72,7 +69,7 @@ class ONNXDetector:
         outputs = self.session.run(None, {self.input_name: img})
         raw = outputs[0]  # shape varies by model export
 
-        detections: List[Detection] = []
+        detections: list[Detection] = []
         if raw is None:
             return detections
 

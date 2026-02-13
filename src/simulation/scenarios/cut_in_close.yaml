@@ -1,0 +1,22 @@
+name: "cut_in_close"
+description: "Vehicle cuts in from the left lane at close range (15 m) while ego travels at 60 km/h"
+category: "cut_in"
+duration_s: 8.0
+conditions:
+  weather: "clear"
+  ego_speed_kmh: 60
+  visibility_m: 200
+  road_type: "urban"
+  lanes: 2
+actors:
+  - type: "car"
+    initial_distance_m: 15
+    speed_kmh: 55
+    behavior: "cut_in_left"
+    lane_offset: -1
+pass_criteria:
+  fcw_triggered: true
+  fcw_latency_ms_max: 300
+  min_ttc_s: 1.0
+  no_collision: true
+  detection_rate_min: 0.95

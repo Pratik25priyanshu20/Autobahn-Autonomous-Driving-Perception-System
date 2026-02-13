@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import time
-from typing import Generator, Tuple
+from collections.abc import Generator
 
 try:
     import cv2
@@ -31,7 +31,7 @@ class WebcamInput(BaseInput):
             raise RuntimeError(f"Could not open webcam device {self.device_id}")
         self.logger.info("Webcam opened: device=%d", self.device_id)
 
-    def frames(self) -> Generator[Tuple[int, FramePacket], None, None]:
+    def frames(self) -> Generator[tuple[int, FramePacket], None, None]:
         if self.cap is None:
             self.start()
         idx = 0

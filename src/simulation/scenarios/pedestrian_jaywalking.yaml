@@ -1,0 +1,26 @@
+name: "pedestrian_jaywalking"
+description: "Pedestrian jaywalks from behind parked cars at 20 m while ego travels at 40 km/h"
+category: "pedestrian"
+duration_s: 6.0
+conditions:
+  weather: "clear"
+  ego_speed_kmh: 40
+  visibility_m: 100
+  road_type: "urban"
+  lanes: 2
+  occlusion: "parked_cars"
+actors:
+  - type: "pedestrian"
+    initial_distance_m: 20
+    speed_kmh: 7
+    behavior: "jaywalk"
+    crossing_direction: "right_to_left"
+    occluded_until_m: 15
+pass_criteria:
+  fcw_triggered: true
+  fcw_latency_ms_max: 200
+  aeb_triggered: true
+  aeb_latency_ms_max: 350
+  min_ttc_s: 1.5
+  no_collision: true
+  detection_rate_min: 0.85

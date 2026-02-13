@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 
 def setup_logger(name: str = "aps", log_dir: str | Path = "results", level: int | str = logging.INFO) -> logging.Logger:
@@ -35,6 +34,6 @@ def setup_logger(name: str = "aps", log_dir: str | Path = "results", level: int 
 
 
 # Backward compatibility alias.
-def get_logger(name: Optional[str] = None, level: str = "INFO", log_file: Optional[Path] = None) -> logging.Logger:
+def get_logger(name: str | None = None, level: str = "INFO", log_file: Path | None = None) -> logging.Logger:
     log_dir = log_file.parent if log_file else "results"
     return setup_logger(name=name or "aps", log_dir=log_dir, level=level)

@@ -2,7 +2,8 @@
 import pytest
 
 try:
-    from hypothesis import given, strategies as st, assume
+    from hypothesis import assume, given  # noqa: F401
+    from hypothesis import strategies as st
     HAS_HYPOTHESIS = True
 except ImportError:
     HAS_HYPOTHESIS = False
@@ -14,10 +15,10 @@ except ImportError:
             return lambda *a, **kw: None
     st = _St()  # type: ignore
 
-from src.safety.ttc import compute_ttc
-from src.safety.risk import risk_score
 from src.safety.fcw import fcw_state
+from src.safety.risk import risk_score
 from src.safety.safety_manager import SafetyManager, SafetyStateEnum
+from src.safety.ttc import compute_ttc
 
 
 @pytest.mark.skipif(not HAS_HYPOTHESIS, reason="hypothesis not installed")

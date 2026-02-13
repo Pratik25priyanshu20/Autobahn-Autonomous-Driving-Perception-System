@@ -1,7 +1,7 @@
 """Tests for occupancy grid (Phase 3.1)."""
 import numpy as np
 
-from src.safety.occupancy_grid import OccupancyGridBuilder, OccupancyGrid
+from src.safety.occupancy_grid import OccupancyGrid, OccupancyGridBuilder
 
 
 def test_empty_depth_returns_empty_grid():

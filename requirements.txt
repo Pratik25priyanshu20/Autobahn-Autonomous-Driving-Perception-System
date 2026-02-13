@@ -6,3 +6,4 @@ rich==13.9.4
 torch
 ultralytics
 deep-sort-realtime
+msgpack

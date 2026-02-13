@@ -1,0 +1,31 @@
+name: "highway_cruise"
+description: "Normal highway driving at 120 km/h with moderate traffic"
+category: "highway"
+duration_s: 20.0
+conditions:
+  weather: "clear"
+  ego_speed_kmh: 120
+  visibility_m: 400
+  road_type: "highway"
+  lanes: 3
+  traffic_density: "moderate"
+actors:
+  - type: "car"
+    initial_distance_m: 60
+    speed_kmh: 115
+    behavior: "cruise"
+  - type: "car"
+    initial_distance_m: 100
+    speed_kmh: 110
+    behavior: "cruise"
+  - type: "truck"
+    initial_distance_m: 80
+    speed_kmh: 90
+    behavior: "cruise"
+    lateral_offset_m: 3.5
+pass_criteria:
+  no_collision: true
+  detection_rate_min: 0.95
+  tracking_accuracy_min: 0.90
+  min_ttc_s: 2.5
+  max_lateral_deviation_m: 0.3

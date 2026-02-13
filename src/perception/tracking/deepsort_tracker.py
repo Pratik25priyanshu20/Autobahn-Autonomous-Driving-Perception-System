@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import Deque, Dict, List, Tuple
 
 import numpy as np
 
@@ -38,10 +37,10 @@ class DeepSORTTracker:
             half=True,  # safe; set to False if issues arise
             bgr=True,  # OpenCV frames are BGR
         )
-        self.prev_centers: Dict[int, Tuple[float, float]] = {}
-        self.trajectories: Dict[int, Deque[Tuple[int, int]]] = defaultdict(lambda: deque(maxlen=30))
+        self.prev_centers: dict[int, tuple[float, float]] = {}
+        self.trajectories: dict[int, deque[tuple[int, int]]] = defaultdict(lambda: deque(maxlen=30))
 
-    def update(self, frame: np.ndarray, detections: List[Detection]) -> Tuple[List[Track], Dict[int, List[Tuple[int, int]]]]:
+    def update(self, frame: np.ndarray, detections: list[Detection]) -> tuple[list[Track], dict[int, list[tuple[int, int]]]]:
         """
         Returns:
           tracks: list of Track objects for this frame
@@ -50,7 +49,7 @@ class DeepSORTTracker:
         ds_dets = [([d.x1, d.y1, d.x2, d.y2], float(d.conf), d.class_name) for d in detections]
         ds_tracks = self.tracker.update_tracks(ds_dets, frame=frame)
 
-        out_tracks: List[Track] = []
+        out_tracks: list[Track] = []
 
         for t in ds_tracks:
             if not t.is_confirmed():

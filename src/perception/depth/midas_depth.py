@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import time
-from typing import Dict
 
 import numpy as np
 
@@ -30,7 +29,7 @@ class MiDASDepth(BaseDepthEstimator):
             self.transform = transforms.dpt_transform
 
     @torch.no_grad()
-    def infer(self, frame: np.ndarray) -> Dict[str, object]:
+    def infer(self, frame: np.ndarray) -> dict[str, object]:
         start = time.perf_counter()
         input_batch = self.transform(frame).to(self.device)
         prediction = self.model(input_batch)

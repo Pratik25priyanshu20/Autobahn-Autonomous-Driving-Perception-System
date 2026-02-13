@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -23,15 +22,15 @@ class LaneIoUEvaluator:
 
     def evaluate(
         self,
-        gt_masks: List[np.ndarray],
-        pred_masks: List[np.ndarray],
+        gt_masks: list[np.ndarray],
+        pred_masks: list[np.ndarray],
     ) -> LaneMetricsResult:
         tp = 0
         fp = 0
         fn = 0
-        ious: List[float] = []
+        ious: list[float] = []
 
-        for gt, pred in zip(gt_masks, pred_masks):
+        for gt, pred in zip(gt_masks, pred_masks, strict=False):
             gt_bin = (gt > 0).astype(np.uint8)
             pred_bin = (pred > 0).astype(np.uint8)
 

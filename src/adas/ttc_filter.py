@@ -37,8 +37,7 @@ class TTCFilter:
             else:
                 self.state_counter[s] = 0
 
-        if raw_state in self.state_counter:
-            if self.state_counter[raw_state] < self.min_persist:
-                stable_state = "NORMAL"
+        if raw_state in self.state_counter and self.state_counter[raw_state] < self.min_persist:
+            stable_state = "NORMAL"
 
         return self.ttc_ema, stable_state

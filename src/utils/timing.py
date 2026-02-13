@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Dict, Iterator
 
 
 @contextmanager
@@ -19,7 +19,7 @@ class StageTimer:
     """Lightweight per-stage timing for a single frame."""
 
     start_ts: float = field(default_factory=time.perf_counter)
-    stages_ms: Dict[str, float] = field(default_factory=dict)
+    stages_ms: dict[str, float] = field(default_factory=dict)
 
     def mark(self, stage_name: str, stage_start_ts: float) -> None:
         self.stages_ms[stage_name] = (time.perf_counter() - stage_start_ts) * 1000.0

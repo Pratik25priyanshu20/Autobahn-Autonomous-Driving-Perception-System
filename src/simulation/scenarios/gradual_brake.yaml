@@ -1,0 +1,23 @@
+name: "gradual_brake"
+description: "Lead vehicle gradually decelerates from 100 km/h to 40 km/h over 5 seconds at 35 m ahead"
+category: "braking"
+duration_s: 10.0
+conditions:
+  weather: "clear"
+  ego_speed_kmh: 100
+  visibility_m: 300
+  road_type: "highway"
+  lanes: 3
+actors:
+  - type: "car"
+    initial_distance_m: 35
+    speed_kmh: 100
+    behavior: "gradual_brake"
+    deceleration_m_s2: -3.3
+    target_speed_kmh: 40
+pass_criteria:
+  fcw_triggered: true
+  fcw_latency_ms_max: 500
+  min_ttc_s: 2.0
+  no_collision: true
+  detection_rate_min: 0.95

@@ -1,0 +1,24 @@
+name: "emergency_brake"
+description: "Lead vehicle performs emergency braking at 25 m ahead while ego follows at 80 km/h"
+category: "braking"
+duration_s: 6.0
+conditions:
+  weather: "clear"
+  ego_speed_kmh: 80
+  visibility_m: 200
+  road_type: "highway"
+  lanes: 2
+actors:
+  - type: "car"
+    initial_distance_m: 25
+    speed_kmh: 80
+    behavior: "emergency_brake"
+    deceleration_m_s2: -9.0
+pass_criteria:
+  fcw_triggered: true
+  fcw_latency_ms_max: 200
+  aeb_triggered: true
+  aeb_latency_ms_max: 350
+  min_ttc_s: 1.0
+  no_collision: true
+  detection_rate_min: 0.98

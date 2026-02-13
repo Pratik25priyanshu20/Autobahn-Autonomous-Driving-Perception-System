@@ -1,8 +1,7 @@
 """Occupancy grid from depth + segmentation (Phase 3.1)."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -39,8 +38,8 @@ class OccupancyGridBuilder:
 
     def build(
         self,
-        depth_map: Optional[np.ndarray] = None,
-        drivable_mask: Optional[np.ndarray] = None,
+        depth_map: np.ndarray | None = None,
+        drivable_mask: np.ndarray | None = None,
     ) -> OccupancyGrid:
         grid = np.zeros((self.grid_size, self.grid_size), dtype=np.float32)
 

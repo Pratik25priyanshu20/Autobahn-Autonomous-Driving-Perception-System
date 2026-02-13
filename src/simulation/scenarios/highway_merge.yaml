@@ -1,0 +1,23 @@
+name: "highway_merge"
+description: "Vehicle merging from on-ramp into ego lane at 80 km/h while ego travels at 110 km/h"
+category: "merge"
+duration_s: 12.0
+conditions:
+  weather: "clear"
+  ego_speed_kmh: 110
+  visibility_m: 300
+  road_type: "highway"
+  lanes: 3
+  merge_type: "on_ramp"
+actors:
+  - type: "car"
+    initial_distance_m: 45
+    speed_kmh: 80
+    behavior: "merge"
+    merge_direction: "right_to_center"
+pass_criteria:
+  fcw_triggered: true
+  fcw_latency_ms_max: 450
+  min_ttc_s: 1.8
+  no_collision: true
+  detection_rate_min: 0.90

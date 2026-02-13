@@ -6,7 +6,7 @@ __all__ = ["DrivableArea", "RuntimeStats", "WorldModel"]
 
 def build_world_model(perception_output):
     """Simple factory used by fusion_engine (legacy compat)."""
-    from src.types.world_model import WorldModel as WM
+    from src.types.world_model import WorldModel as WM  # noqa: N817
 
     wm = WM()
     wm.detections = list(getattr(perception_output, "detections", []))

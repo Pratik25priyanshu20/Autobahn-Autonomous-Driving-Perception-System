@@ -4,8 +4,9 @@ Runs independent perception stages concurrently using ThreadPoolExecutor.
 """
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, Future
-from typing import Any, Callable, Dict, List, Tuple
+from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
+from typing import Any
 
 
 class ParallelStageExecutor:
@@ -14,7 +15,7 @@ class ParallelStageExecutor:
     def __init__(self, max_workers: int = 4):
         self.max_workers = max_workers
 
-    def run(self, stages: Dict[str, Callable[[], Any]]) -> Dict[str, Any]:
+    def run(self, stages: dict[str, Callable[[], Any]]) -> dict[str, Any]:
         """Run named stages concurrently.
 
         Args:
@@ -23,9 +24,9 @@ class ParallelStageExecutor:
         Returns:
             dict of name -> result
         """
-        results: Dict[str, Any] = {}
+        results: dict[str, Any] = {}
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            futures: Dict[str, Future] = {}
+            futures: dict[str, Future] = {}
             for name, fn in stages.items():
                 futures[name] = executor.submit(fn)
             for name, future in futures.items():

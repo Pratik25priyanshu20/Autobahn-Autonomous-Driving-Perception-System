@@ -5,9 +5,10 @@ and yields frames as FramePackets.
 """
 from __future__ import annotations
 
-import time
+import contextlib
 import queue
-from typing import Generator, Iterator, Optional, Tuple
+import time
+from collections.abc import Generator
 
 import numpy as np
 
@@ -83,12 +84,10 @@ class CarlaInput(BaseInput):
         array = np.frombuffer(image.raw_data, dtype=np.uint8)
         array = array.reshape((image.height, image.width, 4))
         bgr = array[:, :, :3]  # Drop alpha
-        try:
+        with contextlib.suppress(queue.Full):
             self._frame_queue.put_nowait(bgr.copy())
-        except queue.Full:
-            pass
 
-    def frames(self) -> Generator[Tuple[int, FramePacket], None, None]:
+    def frames(self) -> Generator[tuple[int, FramePacket], None, None]:
         if carla is None:
             return
 

@@ -1,6 +1,6 @@
+
 import cv2
 import numpy as np
-from typing import List, Dict
 
 
 class BEVRenderer:
@@ -17,7 +17,7 @@ class BEVRenderer:
         py = int(cy - y_m * self.scale)
         return px, py
 
-    def render(self, tracks: List[Dict], lanes: Dict, image_shape: tuple, fcw_state: str = "NORMAL"):
+    def render(self, tracks: list[dict], lanes: dict, image_shape: tuple, fcw_state: str = "NORMAL"):
         canvas = np.zeros((self.size_px, self.size_px, 3), dtype=np.uint8)
 
         # Grid

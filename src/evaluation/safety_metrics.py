@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional
 
 
 @dataclass
@@ -25,14 +24,14 @@ class SafetyResponseEvaluator:
 
     def evaluate(
         self,
-        gt_events: List[SafetyEvent],
-        system_events: List[SafetyEvent],
+        gt_events: list[SafetyEvent],
+        system_events: list[SafetyEvent],
         max_delay_s: float = 2.0,
     ) -> SafetyResponseResult:
         if not gt_events:
             return SafetyResponseResult()
 
-        delays_ms: List[float] = []
+        delays_ms: list[float] = []
         missed = 0
 
         for gt in gt_events:
@@ -40,9 +39,8 @@ class SafetyResponseEvaluator:
             for sys_ev in system_events:
                 if sys_ev.state == gt.state and sys_ev.timestamp_s >= gt.timestamp_s:
                     delay = sys_ev.timestamp_s - gt.timestamp_s
-                    if delay <= max_delay_s:
-                        if best_delay is None or delay < best_delay:
-                            best_delay = delay
+                    if delay <= max_delay_s and (best_delay is None or delay < best_delay):
+                        best_delay = delay
 
             if best_delay is not None:
                 delays_ms.append(best_delay * 1000.0)

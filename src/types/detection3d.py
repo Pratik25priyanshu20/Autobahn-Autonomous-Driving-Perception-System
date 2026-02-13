@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
 
 
 @dataclass
@@ -23,13 +22,13 @@ class Detection3D:
     z_m: float = 0.0
 
     # 3D extent estimates (meters)
-    width_m: Optional[float] = None
-    height_m: Optional[float] = None
-    depth_m: Optional[float] = None
+    width_m: float | None = None
+    height_m: float | None = None
+    depth_m: float | None = None
 
     # Orientation (radians)
     yaw: float = 0.0
 
     @property
-    def center_3d(self) -> Tuple[float, float, float]:
+    def center_3d(self) -> tuple[float, float, float]:
         return (self.x_m, self.y_m, self.z_m)

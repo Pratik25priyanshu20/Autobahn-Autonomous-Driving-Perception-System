@@ -6,7 +6,7 @@ from the side.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -14,7 +14,7 @@ class BSDWarning:
     side: str  # "left" | "right"
     track_id: int
     distance_m: float
-    ttc_s: Optional[float] = None
+    ttc_s: float | None = None
 
 
 class BlindSpotDetector:
@@ -34,9 +34,9 @@ class BlindSpotDetector:
         self.y_max = blind_spot_y_max
         self.ttc_warn_s = ttc_warn_s
 
-    def evaluate(self, tracks: List[Any]) -> List[BSDWarning]:
+    def evaluate(self, tracks: list[Any]) -> list[BSDWarning]:
         """Evaluate all tracks and return BSD warnings."""
-        warnings: List[BSDWarning] = []
+        warnings: list[BSDWarning] = []
 
         for trk in tracks:
             x_m = getattr(trk, "x", None)
@@ -62,12 +62,10 @@ class BlindSpotDetector:
 
         return warnings
 
-    def _lateral_ttc(self, x_m: float, vx: Optional[float]) -> Optional[float]:
+    def _lateral_ttc(self, x_m: float, vx: float | None) -> float | None:
         if vx is None or abs(vx) < 0.1:
             return None
         # TTC = distance / closing rate toward ego center
-        if x_m > 0 and vx < 0:  # approaching from right
-            return abs(x_m / vx)
-        elif x_m < 0 and vx > 0:  # approaching from left
+        if x_m > 0 and vx < 0 or x_m < 0 and vx > 0:  # approaching from right
             return abs(x_m / vx)
         return None

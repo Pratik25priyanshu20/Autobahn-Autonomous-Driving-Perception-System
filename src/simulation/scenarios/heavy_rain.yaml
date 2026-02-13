@@ -1,0 +1,22 @@
+name: "heavy_rain"
+description: "Heavy rain with reduced visibility and wet road surface at 80 km/h"
+category: "weather"
+duration_s: 15.0
+conditions:
+  weather: "rain"
+  rain_intensity: 0.9
+  ego_speed_kmh: 80
+  visibility_m: 80
+  road_type: "highway"
+  lanes: 2
+  road_surface: "wet"
+actors:
+  - type: "car"
+    initial_distance_m: 40
+    speed_kmh: 70
+    behavior: "cruise"
+pass_criteria:
+  no_collision: true
+  detection_rate_min: 0.75
+  tracking_accuracy_min: 0.70
+  min_ttc_s: 2.0

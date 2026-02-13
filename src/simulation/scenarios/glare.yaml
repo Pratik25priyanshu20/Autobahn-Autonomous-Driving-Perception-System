@@ -1,0 +1,23 @@
+name: "glare"
+description: "Direct sun glare during golden-hour driving at 70 km/h"
+category: "weather"
+duration_s: 12.0
+conditions:
+  weather: "clear"
+  sun_altitude_deg: 10
+  sun_azimuth_deg: 180
+  ego_speed_kmh: 70
+  visibility_m: 120
+  road_type: "urban"
+  lanes: 2
+  glare_intensity: 0.9
+actors:
+  - type: "car"
+    initial_distance_m: 30
+    speed_kmh: 60
+    behavior: "cruise"
+pass_criteria:
+  no_collision: true
+  detection_rate_min: 0.70
+  tracking_accuracy_min: 0.65
+  min_ttc_s: 1.8

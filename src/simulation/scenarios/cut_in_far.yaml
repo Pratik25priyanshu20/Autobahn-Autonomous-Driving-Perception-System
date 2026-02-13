@@ -1,0 +1,22 @@
+name: "cut_in_far"
+description: "Vehicle cuts in from the right lane at 40 m while ego travels at 100 km/h on highway"
+category: "cut_in"
+duration_s: 12.0
+conditions:
+  weather: "clear"
+  ego_speed_kmh: 100
+  visibility_m: 300
+  road_type: "highway"
+  lanes: 3
+actors:
+  - type: "car"
+    initial_distance_m: 40
+    speed_kmh: 80
+    behavior: "cut_in_right"
+    lane_offset: 1
+pass_criteria:
+  fcw_triggered: true
+  fcw_latency_ms_max: 500
+  min_ttc_s: 1.5
+  no_collision: true
+  detection_rate_min: 0.90

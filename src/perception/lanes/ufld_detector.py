@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import time
 from collections import deque
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -27,7 +27,7 @@ from src.perception.lanes.base_lane_detector import BaseLaneDetector
 class UFLDv2LaneDetector(BaseLaneDetector):
     """UFLDv2 lane detector with same interface as CannyHoughLaneDetector."""
 
-    def __init__(self, model_path: Optional[str] = None, device: str = "cpu"):
+    def __init__(self, model_path: str | None = None, device: str = "cpu"):
         self.device = device
         self.model = None
         self.model_path = model_path
@@ -40,12 +40,12 @@ class UFLDv2LaneDetector(BaseLaneDetector):
             except Exception:
                 pass
 
-        self._prev_left: Optional[Tuple[float, float]] = None
-        self._prev_right: Optional[Tuple[float, float]] = None
+        self._prev_left: tuple[float, float] | None = None
+        self._prev_right: tuple[float, float] | None = None
         self._lane_center_hist: deque = deque(maxlen=15)
         self._smooth_alpha = 0.85
 
-    def infer(self, frame_bgr: np.ndarray) -> Dict[str, Any]:
+    def infer(self, frame_bgr: np.ndarray) -> dict[str, Any]:
         h, w = frame_bgr.shape[:2]
 
         if self.model is not None and torch is not None:
@@ -54,7 +54,7 @@ class UFLDv2LaneDetector(BaseLaneDetector):
         # Fallback: gradient-based lane detection (lightweight heuristic)
         return self._infer_fallback(frame_bgr, h, w)
 
-    def _infer_model(self, frame_bgr: np.ndarray, h: int, w: int) -> Dict[str, Any]:
+    def _infer_model(self, frame_bgr: np.ndarray, h: int, w: int) -> dict[str, Any]:
         """Run actual UFLDv2 model inference."""
         start = time.perf_counter()
         img = cv2.resize(frame_bgr, (800, 320))
@@ -64,13 +64,13 @@ class UFLDv2LaneDetector(BaseLaneDetector):
         with torch.no_grad():
             output = self.model(tensor)
 
-        latency_ms = (time.perf_counter() - start) * 1000.0
+        _ = (time.perf_counter() - start) * 1000.0  # latency_ms for future telemetry
 
         # Parse output into lane lines (model-specific)
         left_line, right_line = self._parse_model_output(output, h, w)
         return self._build_result(left_line, right_line, h, w)
 
-    def _infer_fallback(self, frame_bgr: np.ndarray, h: int, w: int) -> Dict[str, Any]:
+    def _infer_fallback(self, frame_bgr: np.ndarray, h: int, w: int) -> dict[str, Any]:
         """Fallback using Canny+Hough when model isn't loaded."""
         if cv2 is None:
             return self._empty_result()
@@ -88,8 +88,8 @@ class UFLDv2LaneDetector(BaseLaneDetector):
         masked = cv2.bitwise_and(edges, mask)
 
         lines = cv2.HoughLinesP(masked, 2, np.pi / 180, 50, minLineLength=40, maxLineGap=150)
-        left_pts: List[Tuple[int, int]] = []
-        right_pts: List[Tuple[int, int]] = []
+        left_pts: list[tuple[int, int]] = []
+        right_pts: list[tuple[int, int]] = []
         if lines is not None:
             for x1, y1, x2, y2 in lines.reshape(-1, 4):
                 if x2 == x1:
@@ -114,7 +114,7 @@ class UFLDv2LaneDetector(BaseLaneDetector):
         right_line = self._params_to_points(right_params, roi_top, roi_bottom, w) if right_params else None
         return self._build_result(left_line, right_line, h, w)
 
-    def _build_result(self, left_line, right_line, h: int, w: int) -> Dict[str, Any]:
+    def _build_result(self, left_line, right_line, h: int, w: int) -> dict[str, Any]:
         lane_confidence = 0.0
         if left_line and right_line:
             lane_confidence = 1.0
@@ -151,7 +151,7 @@ class UFLDv2LaneDetector(BaseLaneDetector):
         # Model-specific parsing — stub returns None for now
         return None, None
 
-    def _empty_result(self) -> Dict[str, Any]:
+    def _empty_result(self) -> dict[str, Any]:
         return {
             "left_line": None, "right_line": None, "ego_offset_px": None,
             "lane_confidence": 0.0, "lane_center_x": None, "lane_stable": False,

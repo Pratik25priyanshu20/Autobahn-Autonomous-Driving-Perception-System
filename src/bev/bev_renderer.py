@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from typing import Any
+
 import cv2
 import numpy as np
-from typing import Any
 
 
 class BEVRenderer:
@@ -53,6 +54,8 @@ class BEVRenderer:
         self._draw_corridor(canvas)
         self._draw_lanes(canvas, world)
         self._draw_objects(canvas, world, fcw or {})
+        self._draw_topk_trajectories(canvas, world)
+        self._draw_interactions(canvas, world)
         self._draw_fcw_cone(canvas, fcw_state=(fcw or {}).get("state"))
         return canvas
 
@@ -225,6 +228,84 @@ class BEVRenderer:
                 (255, 255, 255),
                 1,
             )
+
+    def _draw_topk_trajectories(self, canvas: np.ndarray, world: Any) -> None:
+        """Render top-K trajectory hypotheses with opacity proportional to probability."""
+        topk = getattr(world, "predictions_topk", {})
+        if not topk:
+            return
+
+        mode_colors = {
+            "straight": (0, 255, 128),
+            "left_deviate": (255, 180, 0),
+            "right_deviate": (180, 0, 255),
+        }
+
+        for _tid, hypotheses in topk.items():
+            for hyp in hypotheses:
+                mode = getattr(hyp, "mode", "straight")
+                prob = getattr(hyp, "probability", 0.5)
+                pts = getattr(hyp, "points", [])
+                if not pts:
+                    continue
+
+                color = mode_colors.get(mode, (200, 200, 200))
+                alpha = max(0.15, min(0.9, prob))
+
+                # Draw trajectory line connecting waypoints
+                bev_pts = []
+                for pt in pts:
+                    bx, by = self.world_to_bev(pt.x_m, pt.y_m)
+                    bev_pts.append((bx, by))
+
+                overlay = canvas.copy()
+                for i in range(len(bev_pts) - 1):
+                    cv2.line(overlay, bev_pts[i], bev_pts[i + 1], color, 2)
+                for bx, by in bev_pts:
+                    cv2.circle(overlay, (bx, by), 3, color, -1)
+                canvas[:] = cv2.addWeighted(overlay, alpha, canvas, 1.0 - alpha, 0)
+
+    def _draw_interactions(self, canvas: np.ndarray, world: Any) -> None:
+        """Render interaction events: merge arrows, following indicators, cut-in warnings."""
+        interactions = getattr(world, "interactions", [])
+        if not interactions:
+            return
+
+        objs = getattr(world, "tracks", [])
+        obj_map = {getattr(o, "track_id", None): o for o in objs}
+
+        for event in interactions:
+            event_type = getattr(event, "type", "")
+            risk = getattr(event, "risk_level", "low")
+            color = (0, 0, 255) if risk == "high" else (0, 165, 255) if risk == "medium" else (0, 255, 255)
+            involved = getattr(event, "involved_track_ids", [])
+
+            if event_type == "following_distance" and involved:
+                # Draw distance indicator from ego to lead
+                lead = obj_map.get(involved[0])
+                if lead and getattr(lead, "y", None) is not None:
+                    ego_px, ego_py = self.origin
+                    lead_px, lead_py = self.world_to_bev(getattr(lead, "x", 0), lead.y)
+                    cv2.line(canvas, (ego_px, ego_py - 20), (lead_px, lead_py), color, 2)
+                    mid_y = (ego_py - 20 + lead_py) // 2
+                    tte = getattr(event, "time_to_event_s", None)
+                    label = f"{tte:.1f}s" if tte else "!"
+                    cv2.putText(canvas, label, (ego_px + 5, mid_y), cv2.FONT_HERSHEY_SIMPLEX, 0.35, color, 1)
+
+            elif event_type == "cut_in" and involved:
+                # Draw warning triangle at the cutting-in vehicle
+                trk = obj_map.get(involved[0])
+                if trk and getattr(trk, "x", None) is not None:
+                    px, py = self.world_to_bev(trk.x, getattr(trk, "y", 0))
+                    tri = np.array([[px, py - 12], [px - 8, py + 4], [px + 8, py + 4]])
+                    cv2.fillPoly(canvas, [tri], color)
+
+            elif event_type == "gap_acceptance" and len(involved) > 0:
+                # Draw merge arrow from ego toward adjacent lane
+                ego_px, ego_py = self.origin
+                target_x = self.lane_width_m * 1.5
+                arrow_end = self.world_to_bev(target_x, 5.0)
+                cv2.arrowedLine(canvas, (ego_px, ego_py - 20), arrow_end, color, 2, tipLength=0.3)
 
     def _draw_fcw_cone(self, canvas: np.ndarray, fcw_state: str | None) -> None:
         fcw_state = (fcw_state or "NORMAL").upper()

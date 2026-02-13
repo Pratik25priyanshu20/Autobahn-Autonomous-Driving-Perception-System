@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 
@@ -18,7 +18,7 @@ def draw_overlays(frame: Any, world_model: Any) -> Any:
     return annotated
 
 
-def draw_hud(frame: Any, fps: float, stages_ms: Dict[str, float], warnings: Optional[List[str]] = None):
+def draw_hud(frame: Any, fps: float, stages_ms: dict[str, float], warnings: list[str] | None = None):
     """Minimal HUD overlay with FPS and stage timings."""
     if cv2 is None:
         return frame
@@ -41,7 +41,7 @@ def draw_hud(frame: Any, fps: float, stages_ms: Dict[str, float], warnings: Opti
     return render
 
 
-def draw_detections(frame: Any, detections: List[Any]) -> Any:
+def draw_detections(frame: Any, detections: list[Any]) -> Any:
     if cv2 is None:
         return frame
     render = frame.copy()
@@ -53,7 +53,7 @@ def draw_detections(frame: Any, detections: List[Any]) -> Any:
     return render
 
 
-def draw_tracks(frame: Any, tracks: List[Any], trajectories: Optional[Dict[int, List[tuple]]] = None) -> Any:
+def draw_tracks(frame: Any, tracks: list[Any], trajectories: dict[int, list[tuple]] | None = None) -> Any:
     if cv2 is None:
         return frame
     render = frame.copy()
@@ -69,7 +69,7 @@ def draw_tracks(frame: Any, tracks: List[Any], trajectories: Optional[Dict[int, 
             vx, vy = tr.velocity_px_per_frame
             cv2.putText(render, f"v=({vx:.1f},{vy:.1f})", (x1, y2 + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-    for tid, pts in trajectories.items():
+    for _tid, pts in trajectories.items():
         if len(pts) < 2:
             continue
         for i in range(1, len(pts)):
@@ -78,11 +78,11 @@ def draw_tracks(frame: Any, tracks: List[Any], trajectories: Optional[Dict[int, 
     return render
 
 
-def draw_fcw_pre(frame: Any, fcw_pre: Dict[str, Any]) -> Any:
+def draw_fcw_pre(frame: Any, fcw_pre: dict[str, Any]) -> Any:
     if not fcw_pre or fcw_pre.get("state") != "PRE" or cv2 is None:
         return frame
-    ttc = fcw_pre.get("ttc_s", None)
-    dist_px = fcw_pre.get("distance_px", None)
+    ttc = fcw_pre.get("ttc_s")
+    dist_px = fcw_pre.get("distance_px")
     if ttc is not None or dist_px is not None:
         dist_txt = f"d={dist_px:.0f}px" if dist_px is not None else ""
         ttc_txt = f"TTC={ttc:.2f}s" if ttc is not None else ""
@@ -92,13 +92,13 @@ def draw_fcw_pre(frame: Any, fcw_pre: Dict[str, Any]) -> Any:
     return frame
 
 
-def draw_fcw(frame: Any, fcw: Dict[str, Any]) -> Any:
+def draw_fcw(frame: Any, fcw: dict[str, Any]) -> Any:
     if not fcw or cv2 is None:
         return frame
 
     state = fcw.get("state", "NORMAL")
-    ttc = fcw.get("ttc_s", None)
-    bbox = fcw.get("lead_bbox", None)
+    ttc = fcw.get("ttc_s")
+    bbox = fcw.get("lead_bbox")
 
     if bbox is not None:
         x1, y1, x2, y2 = map(int, bbox)
@@ -117,7 +117,7 @@ def draw_fcw(frame: Any, fcw: Dict[str, Any]) -> Any:
     return frame
 
 
-def draw_drivable(frame: Any, drivable: Dict[str, Any]) -> Any:
+def draw_drivable(frame: Any, drivable: dict[str, Any]) -> Any:
     if cv2 is None or drivable is None:
         return frame
     mask = None
@@ -133,7 +133,7 @@ def draw_drivable(frame: Any, drivable: Dict[str, Any]) -> Any:
     return overlay
 
 
-def draw_safety_banner(frame: Any, safety: Dict[str, Any]) -> Any:
+def draw_safety_banner(frame: Any, safety: dict[str, Any]) -> Any:
     if not safety or cv2 is None:
         return frame
     state = safety.get("state", "NORMAL")
@@ -150,7 +150,7 @@ def draw_safety_banner(frame: Any, safety: Dict[str, Any]) -> Any:
     return frame
 
 
-def draw_lanes(frame: Any, lanes: Dict[str, Any]) -> Any:
+def draw_lanes(frame: Any, lanes: dict[str, Any]) -> Any:
     if cv2 is None:
         return frame
     render = frame.copy()
@@ -179,7 +179,7 @@ def draw_lanes(frame: Any, lanes: Dict[str, Any]) -> Any:
     return render
 
 
-def draw_bsd_indicators(frame: Any, bsd_warnings: List[Any]) -> Any:
+def draw_bsd_indicators(frame: Any, bsd_warnings: list[Any]) -> Any:
     """Draw Blind Spot Detection / RCTA warning indicators (Phase 3.2)."""
     if cv2 is None or not bsd_warnings:
         return frame
@@ -207,6 +207,34 @@ def draw_bsd_indicators(frame: Any, bsd_warnings: List[Any]) -> Any:
         text_x = 10 if side == "left" else w - 200
         cv2.putText(render, label, (text_x, cy + tri_size + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
     return render
+
+
+def draw_sensor_health(frame: Any, health_dict: dict[str, float]) -> Any:
+    """Draw sensor health indicators as colored bars."""
+    if cv2 is None or not health_dict:
+        return frame
+    render = frame.copy()
+    x_start = render.shape[1] - 200
+    y = 60
+    for sensor, score in health_dict.items():
+        color = (0, 255, 0) if score > 0.7 else (0, 165, 255) if score > 0.4 else (0, 0, 255)
+        bar_w = int(score * 100)
+        cv2.rectangle(render, (x_start, y), (x_start + bar_w, y + 14), color, -1)
+        cv2.rectangle(render, (x_start, y), (x_start + 100, y + 14), (200, 200, 200), 1)
+        cv2.putText(render, f"{sensor}: {score:.2f}", (x_start - 70, y + 12), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+        y += 20
+    return render
+
+
+def draw_saliency(frame: Any, saliency_map: Any) -> Any:
+    """Draw saliency overlay on frame."""
+    if cv2 is None or saliency_map is None:
+        return frame
+    try:
+        from src.perception.explainability.attention_overlay import overlay_saliency
+        return overlay_saliency(frame, saliency_map, alpha=0.3)
+    except ImportError:
+        return frame
 
 
 def draw_world_text(frame: Any, world: Any) -> Any:

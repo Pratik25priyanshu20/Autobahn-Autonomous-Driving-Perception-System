@@ -1,0 +1,25 @@
+name: "roundabout_entry"
+description: "Entering a roundabout with circulating traffic at 25 km/h"
+category: "merge"
+duration_s: 10.0
+conditions:
+  weather: "clear"
+  ego_speed_kmh: 25
+  visibility_m: 100
+  road_type: "urban"
+  lanes: 1
+  junction_type: "roundabout"
+actors:
+  - type: "car"
+    initial_distance_m: 20
+    speed_kmh: 30
+    behavior: "circulating"
+  - type: "car"
+    initial_distance_m: 35
+    speed_kmh: 28
+    behavior: "circulating"
+pass_criteria:
+  min_ttc_s: 2.0
+  no_collision: true
+  detection_rate_min: 0.90
+  tracking_accuracy_min: 0.85

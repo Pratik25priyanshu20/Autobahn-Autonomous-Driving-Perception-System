@@ -23,3 +23,32 @@ bsd:
   enabled: false
   blind_spot_x_range: [1.5, 4.0]
   ttc_warn_s: 3.0
+
+# Phase 4: ISO 26262 Safety Architecture
+asil:
+  enabled: true
+
+plausibility:
+  enabled: false
+  max_velocity_kmh: 200.0
+  max_position_jump_m: 10.0
+  max_bbox_overlap: 0.8
+  max_detection_count: 100
+
+redundant_detection:
+  enabled: false
+  iou_threshold: 0.5
+  min_agreement: 0.6
+  secondary_model: "yolov8s.pt"
+
+dtc:
+  enabled: false
+  output_dir: "results"
+
+# Round 2: Sensor health monitoring
+sensor_health:
+  enabled: false
+  brightness_range: [40, 220]
+  blur_threshold: 100.0
+  expected_lidar_points: 10000
+  health_threshold: 0.5

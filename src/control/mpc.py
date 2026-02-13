@@ -5,7 +5,7 @@ Basic trajectory optimization with safety constraints.
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, List
+from typing import Any
 
 from src.control.base_controller import BaseController
 
@@ -19,7 +19,7 @@ class MPCController(BaseController):
         self.wheelbase_m = wheelbase_m
         self.max_steer_deg = max_steer_deg
 
-    def plan(self, world_model: Any) -> Dict[str, Any]:
+    def plan(self, world_model: Any) -> dict[str, Any]:
         lanes = getattr(world_model, "lanes", {})
         safety = getattr(world_model, "safety", {})
 
@@ -29,7 +29,7 @@ class MPCController(BaseController):
         lateral_error_m = (ego_offset_px or 0.0) * px_to_m
 
         # Simple trajectory optimization: minimize lateral error over horizon
-        trajectory: List[Dict[str, float]] = []
+        trajectory: list[dict[str, float]] = []
         x, y, yaw = 0.0, 0.0, 0.0
         speed = 5.0  # m/s assumed
 
@@ -45,7 +45,7 @@ class MPCController(BaseController):
             best_steer = -0.5 * lateral_error_m
             best_steer = max(-math.radians(self.max_steer_deg), min(math.radians(self.max_steer_deg), best_steer))
 
-        for step in range(self.horizon):
+        for _step in range(self.horizon):
             x += speed * math.cos(yaw) * self.dt
             y += speed * math.sin(yaw) * self.dt
             yaw += (speed / self.wheelbase_m) * math.tan(best_steer) * self.dt

@@ -1,20 +1,13 @@
 """Tests for type consolidation (Phase 0.1)."""
 from src.types import (
     Detection,
-    Track,
+    Detection3D,
     EgoState,
     LaneGeometry,
     LaneState,
-    SafetyStatus,
-    SafetyState,
-    SafetyOutput,
     SafetyStateEnum,
+    Track,
     WorldModel,
-    RuntimeStats,
-    DrivableArea,
-    FramePacket,
-    PerceptionOutput,
-    Detection3D,
 )
 
 
@@ -73,12 +66,12 @@ def test_detection3d():
 
 
 def test_backward_compat_utils_types():
-    from src.utils.types import Detection, FramePacket, PerceptionOutput, SafetyStatus, Track, WorldModel
+    from src.utils.types import Detection
     d = Detection(x1=0, y1=0, x2=1, y2=1, conf=0.5, class_id=0, class_name="person")
     assert d.label == "person"
 
 
 def test_backward_compat_fusion_types():
-    from src.fusion.types import EgoState, LaneGeometry, SafetyState, DrivableArea
+    from src.fusion.types import EgoState
     e = EgoState()
     assert e.speed_mps == 0.0

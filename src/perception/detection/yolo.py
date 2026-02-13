@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional
-
 import numpy as np
 
 from src.types.detection import Detection
 
 # Supported model variants for config-driven switching (Phase 1.1)
-SUPPORTED_MODELS: Dict[str, str] = {
+SUPPORTED_MODELS: dict[str, str] = {
     "yolov8n": "yolov8n.pt",
     "yolov8s": "yolov8s.pt",
     "yolov8m": "yolov8m.pt",
@@ -29,7 +27,7 @@ def _auto_device() -> str:
 class YOLODetector:
     """YOLOv8/v11 wrapper for APS++ with automatic device selection."""
 
-    def __init__(self, model_name: str = "yolov8n.pt", device: Optional[str] = None):
+    def __init__(self, model_name: str = "yolov8n.pt", device: str | None = None):
         from ultralytics import YOLO
         # Resolve shorthand model names
         resolved = SUPPORTED_MODELS.get(model_name, model_name)
@@ -46,7 +44,7 @@ class YOLODetector:
             7: "truck",
         }
 
-    def infer(self, frame: np.ndarray, conf_thres: float = 0.25) -> List[Detection]:
+    def infer(self, frame: np.ndarray, conf_thres: float = 0.25) -> list[Detection]:
         results = self.model(
             frame,
             device=self.device,
@@ -54,7 +52,7 @@ class YOLODetector:
             verbose=False,
         )[0]
 
-        detections: List[Detection] = []
+        detections: list[Detection] = []
 
         if results.boxes is None:
             return detections

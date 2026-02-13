@@ -1,0 +1,26 @@
+name: "night"
+description: "Night driving with headlights only at 90 km/h on an unlit highway"
+category: "weather"
+duration_s: 15.0
+conditions:
+  weather: "night"
+  ambient_light_lux: 0.5
+  ego_speed_kmh: 90
+  visibility_m: 100
+  road_type: "highway"
+  lanes: 3
+  lighting: "headlights_only"
+actors:
+  - type: "car"
+    initial_distance_m: 50
+    speed_kmh: 85
+    behavior: "cruise"
+  - type: "car"
+    initial_distance_m: 80
+    speed_kmh: 90
+    behavior: "cruise"
+pass_criteria:
+  no_collision: true
+  detection_rate_min: 0.80
+  tracking_accuracy_min: 0.75
+  min_ttc_s: 2.0

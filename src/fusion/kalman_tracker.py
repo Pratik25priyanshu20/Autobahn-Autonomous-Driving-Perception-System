@@ -4,8 +4,6 @@ State vector: [x, y, vx, vy]  (position and velocity in meters).
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
-
 import numpy as np
 
 
@@ -44,19 +42,19 @@ class ObjectKalmanFilter:
     def update(self, z: np.ndarray) -> np.ndarray:
         """z = [x_measured, y_measured]"""
         y = z - self.H @ self.x
-        S = self.H @ self.P @ self.H.T + self.R
-        K = self.P @ self.H.T @ np.linalg.inv(S)
+        S = self.H @ self.P @ self.H.T + self.R  # noqa: N806
+        K = self.P @ self.H.T @ np.linalg.inv(S)  # noqa: N806
         self.x = self.x + K @ y
-        I = np.eye(4)
-        self.P = (I - K @ self.H) @ self.P
+        eye = np.eye(4)
+        self.P = (eye - K @ self.H) @ self.P
         return self.x.copy()
 
     @property
-    def position(self) -> Tuple[float, float]:
+    def position(self) -> tuple[float, float]:
         return float(self.x[0]), float(self.x[1])
 
     @property
-    def velocity(self) -> Tuple[float, float]:
+    def velocity(self) -> tuple[float, float]:
         return float(self.x[2]), float(self.x[3])
 
 
@@ -72,9 +70,9 @@ class KalmanTrackManager:
         self.process_noise = process_noise
         self.measurement_noise = measurement_noise
         self.dt = dt
-        self.filters: Dict[int, ObjectKalmanFilter] = {}
+        self.filters: dict[int, ObjectKalmanFilter] = {}
 
-    def update_track(self, track_id: int, x_m: float, y_m: float) -> Tuple[float, float, float, float]:
+    def update_track(self, track_id: int, x_m: float, y_m: float) -> tuple[float, float, float, float]:
         """Update (or create) the filter for a track. Returns (x, y, vx, vy)."""
         if track_id not in self.filters:
             kf = ObjectKalmanFilter(self.process_noise, self.measurement_noise, self.dt)
@@ -92,5 +90,5 @@ class KalmanTrackManager:
         for tid in dead:
             del self.filters[tid]
 
-    def get_filter(self, track_id: int) -> Optional[ObjectKalmanFilter]:
+    def get_filter(self, track_id: int) -> ObjectKalmanFilter | None:
         return self.filters.get(track_id)

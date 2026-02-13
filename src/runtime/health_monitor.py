@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from src.utils.logger import get_logger
 
@@ -8,7 +8,7 @@ from src.utils.logger import get_logger
 class HealthMonitor:
     """Monitors frame-processing latency and triggers degraded mode."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.logger = get_logger(__name__)
         self.watchdog_ms: float = float(config.get("watchdog_ms", 100))

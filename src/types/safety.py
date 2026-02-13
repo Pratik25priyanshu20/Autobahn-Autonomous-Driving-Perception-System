@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class SafetyStateEnum(str, Enum):
@@ -18,9 +18,9 @@ class SafetyStateEnum(str, Enum):
 class SafetyStatus:
     """Output from rule-based safety evaluation."""
 
-    ttc_s: Optional[float] = None
-    risk_score: Optional[float] = None
-    warnings: List[str] = field(default_factory=list)
+    ttc_s: float | None = None
+    risk_score: float | None = None
+    warnings: list[str] = field(default_factory=list)
     degraded_mode: bool = False
 
 
@@ -39,4 +39,4 @@ class SafetyOutput:
     state: SafetyStateEnum
     message: str
     color: tuple[int, int, int] = (0, 255, 0)
-    details: Dict[str, Any] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)

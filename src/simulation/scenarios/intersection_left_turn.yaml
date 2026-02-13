@@ -1,0 +1,22 @@
+name: "intersection_left_turn"
+description: "Oncoming vehicle approaching while ego makes unprotected left turn at 30 km/h"
+category: "merge"
+duration_s: 10.0
+conditions:
+  weather: "clear"
+  ego_speed_kmh: 30
+  visibility_m: 150
+  road_type: "urban"
+  lanes: 2
+  intersection_type: "unprotected_left"
+actors:
+  - type: "car"
+    initial_distance_m: 50
+    speed_kmh: 50
+    behavior: "oncoming_straight"
+pass_criteria:
+  fcw_triggered: true
+  fcw_latency_ms_max: 350
+  min_ttc_s: 2.5
+  no_collision: true
+  detection_rate_min: 0.92

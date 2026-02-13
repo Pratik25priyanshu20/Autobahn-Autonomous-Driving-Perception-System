@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import math
-from typing import List
 
 from src.types.detection import Detection
 
@@ -17,7 +16,7 @@ class ConfidenceCalibrator:
     def __init__(self, temperature: float = 1.0):
         self.temperature = max(0.01, temperature)
 
-    def calibrate(self, detections: List[Detection]) -> List[Detection]:
+    def calibrate(self, detections: list[Detection]) -> list[Detection]:
         if self.temperature == 1.0:
             return detections
         for det in detections:

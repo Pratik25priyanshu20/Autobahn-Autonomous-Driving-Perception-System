@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 import threading
-from typing import Any, Optional
+from typing import Any
 
 try:
     import cv2
@@ -32,9 +32,9 @@ class StreamingServer:
         self.host = host
         self.port = port
         self._app = FastAPI(title="APS++ Stream")
-        self._latest_frame: Optional[bytes] = None
-        self._latest_wm: Optional[dict] = None
-        self._thread: Optional[threading.Thread] = None
+        self._latest_frame: bytes | None = None
+        self._latest_wm: dict | None = None
+        self._thread: threading.Thread | None = None
         self._setup_routes()
 
     def _setup_routes(self):

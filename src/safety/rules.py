@@ -1,12 +1,11 @@
-from typing import Dict, List
 
 from src.safety.risk import risk_score
 from src.safety.ttc import compute_ttc
 from src.utils.types import SafetyStatus
 
 
-def evaluate(distance_m: float, relative_speed_mps: float, config: Dict) -> SafetyStatus:
-    warnings: List[str] = []
+def evaluate(distance_m: float, relative_speed_mps: float, config: dict) -> SafetyStatus:
+    warnings: list[str] = []
     ttc_value = compute_ttc(distance_m, relative_speed_mps)
     ttc_cfg = config.get("ttc", {})
     if ttc_value is not None:

@@ -1,0 +1,26 @@
+name: "highway_tailgating"
+description: "Following vehicle tailgates ego at 8 m distance while ego drives at 110 km/h"
+category: "highway"
+duration_s: 12.0
+conditions:
+  weather: "clear"
+  ego_speed_kmh: 110
+  visibility_m: 300
+  road_type: "highway"
+  lanes: 3
+  rear_threat: true
+actors:
+  - type: "car"
+    initial_distance_m: -8
+    speed_kmh: 115
+    behavior: "tailgate"
+    position: "rear"
+  - type: "car"
+    initial_distance_m: 50
+    speed_kmh: 105
+    behavior: "cruise"
+pass_criteria:
+  no_collision: true
+  detection_rate_min: 0.90
+  tracking_accuracy_min: 0.85
+  min_ttc_s: 1.2

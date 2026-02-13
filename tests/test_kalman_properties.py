@@ -3,7 +3,8 @@ import numpy as np
 import pytest
 
 try:
-    from hypothesis import given, strategies as st
+    from hypothesis import given
+    from hypothesis import strategies as st
     HAS_HYPOTHESIS = True
 except ImportError:
     HAS_HYPOTHESIS = False
@@ -15,7 +16,7 @@ except ImportError:
             return lambda *a, **kw: None
     st = _St()  # type: ignore
 
-from src.fusion.kalman_tracker import ObjectKalmanFilter, KalmanTrackManager
+from src.fusion.kalman_tracker import KalmanTrackManager, ObjectKalmanFilter
 
 
 class TestKalmanFilter:

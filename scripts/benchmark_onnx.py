@@ -13,7 +13,6 @@ import onnxruntime as ort
 import torch
 from ultralytics import YOLO
 
-
 N = 50
 INPUT_SHAPE = (1, 3, 640, 640)
 
